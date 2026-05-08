@@ -1,10 +1,9 @@
-// src/pages/Dashboard/Notifications.jsx
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, Check, X, MailOpen } from 'lucide-react';
+import { Bell, Check, X, MailOpen, Mail } from 'lucide-react';
 
 const Notifications = () => {
-  const { invitations, projects, users, updateInvitationStatus, markNotificationRead } = useData();
+  const { invitations, projects, users, updateInvitationStatus, toggleNotificationRead, resolveCourseRequest } = useData();
   const { currentUser } = useAuth();
 
   // Get notifications/invites sent TO the current user
@@ -27,15 +26,23 @@ const Notifications = () => {
         ) : (
           <div className="space-y-4">
             {myNotifications.map(notif => {
-              const project = getProject(notif.projectId);
               const sender = getSender(notif.senderId);
+              const isCourseReq = notif.type === 'course_request';
+              const project = !isCourseReq ? getProject(notif.projectId) : null;
 
               return (
                 <div key={notif.id} className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${notif.read ? 'bg-white border-gray-100' : 'bg-blue-50 border-blue-100'}`}>
                   <div>
-                    <p className="text-sm text-gray-800">
-                      <span className="font-bold">{sender?.firstName} {sender?.lastName}</span> invited you to collaborate on <span className="font-bold text-primary">{project?.title}</span>.
-                    </p>
+                    {isCourseReq ? (
+                       <p className="text-sm text-gray-800">
+                        <span className="font-bold">{sender?.firstName} {sender?.lastName}</span> requested to <span className="font-bold text-primary uppercase">{notif.actionType}</span> the course <span className="font-bold">{notif.courseCode}</span>.
+                       </p>
+                    ) : (
+                       <p className="text-sm text-gray-800">
+                         <span className="font-bold">{sender?.firstName} {sender?.lastName}</span> invited you to collaborate on <span className="font-bold text-primary">{project?.title}</span>.
+                       </p>
+                    )}
+                    
                     <span className={`text-xs font-bold px-2 py-1 rounded-md mt-2 inline-block
                       ${notif.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}
                       ${notif.status === 'accepted' ? 'bg-green-100 text-green-700' : ''}
@@ -46,17 +53,26 @@ const Notifications = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {!notif.read && (
-                       <button onClick={() => markNotificationRead(notif.id)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="Mark as read">
-                         <MailOpen className="w-5 h-5" />
-                       </button>
-                    )}
+                    <button 
+                      onClick={() => toggleNotificationRead(notif.id)} 
+                      className={`p-2 transition-colors ${notif.read ? 'text-gray-400 hover:text-gray-600' : 'text-blue-500 hover:text-blue-700'}`} 
+                      title={notif.read ? "Mark as unread" : "Mark as read"}
+                    >
+                      {notif.read ? <Mail className="w-5 h-5" /> : <MailOpen className="w-5 h-5" />}
+                    </button>
+                    
                     {notif.status === 'pending' && (
                       <>
-                        <button onClick={() => updateInvitationStatus(notif.id, 'accepted')} className="flex items-center bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors">
+                        <button 
+                          onClick={() => isCourseReq ? resolveCourseRequest(notif.id, 'accepted') : updateInvitationStatus(notif.id, 'accepted')} 
+                          className="flex items-center bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors"
+                        >
                           <Check className="w-4 h-4 mr-1" /> Accept
                         </button>
-                        <button onClick={() => updateInvitationStatus(notif.id, 'rejected')} className="flex items-center bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors">
+                        <button 
+                          onClick={() => isCourseReq ? resolveCourseRequest(notif.id, 'rejected') : updateInvitationStatus(notif.id, 'rejected')} 
+                          className="flex items-center bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
+                        >
                           <X className="w-4 h-4 mr-1" /> Reject
                         </button>
                       </>

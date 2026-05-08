@@ -40,7 +40,20 @@ export const initialUsers = [
     role: "Employer",
     status: "active",
     profilePic: "https://ui-avatars.com/api/?name=TechCorp"
+  },
+  {
+    id: 5,
+    firstName: "Sara",
+    lastName: "Collaborator",
+    email: "sara@student.guc.edu.eg",
+    password: "password123",
+    role: "Student",
+    major: "MET",
+    skills: ["React"],
+    profilePic: "https://i.pravatar.cc/150?img=1"
   }
+  
+
 ];
 
 export const initialCourses = [
@@ -79,8 +92,8 @@ export const initialInternships = [
 ];
 
 export const initialTasks = [
-  { id: "t1", projectId: "p1", description: "Design Figma wireframes", assigneeId: 1, status: "completed", deadline: "2026-03-12" },
-  { id: "t2", projectId: "p1", description: "Implement React Router", assigneeId: 1, status: "pending", deadline: "2026-04-10" }
+  { id: "t1", projectId: "p1", description: "Design Figma wireframes", assigneeId: 1, status: "completed", deadline: "2026-03-12", order: 1 },
+  { id: "t2", projectId: "p1", description: "Implement React Router", assigneeId: 1, status: "pending", deadline: "2026-04-10", order: 2 }
 ];
 
 export const initialApplications = [
@@ -96,7 +109,8 @@ export const initialTaskComments = [
 ];
 
 export const initialInvitations = [
-  { id: "inv1", projectId: "p1", senderId: 1, receiverId: 2, status: "pending", read: false }
+  { id: "inv1", projectId: "p1", senderId: 1, receiverId: 2, status: "pending", read: false },
+  { id: "inv2", projectId: "p1", senderId: 1, receiverId: 5, status: "accepted", read: true }
 ];
 
 // Add to the bottom of src/assets/dummyData.js

@@ -7,7 +7,7 @@ import { ArrowLeft, Edit3, Code, Globe, Mail, Folder, MapPin } from 'lucide-reac
 
 const PortfolioDetail = () => {
   const { id } = useParams();
-  const { users, projects, courses, updateUser, invitations } = useData();
+  const { users, projects, courses, updateUser, invitations, sendCourseRequest } = useData();
   const { currentUser } = useAuth();
 
   const profileUser = users.find(u => u.id === parseInt(id));
@@ -197,7 +197,7 @@ const PortfolioDetail = () => {
                   <div key={courseCode} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-100 rounded-lg">
                     <span className="font-bold text-sm text-primary">{courseCode}</span>
                     {isOwnProfile && courseCode !== 'BP' && (
-                      <button onClick={() => alert("Unlink request sent to Administrator.")} className="text-xs text-red-500 hover:underline">
+                      <button onClick={() => sendCourseRequest(currentUser.id, courseCode, 'unlink')} className="text-xs text-red-500 hover:underline">
                         Request Unlink
                       </button>
                     )}
@@ -218,7 +218,7 @@ const PortfolioDetail = () => {
                         <option key={c.id} value={c.code}>{c.code} - {c.name}</option>
                       ))}
                     </select>
-                    <button onClick={() => alert("Link request sent to Administrator.")} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100">
+                    <button onClick={() => sendCourseRequest(currentUser.id, selectedCourse, 'link')} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100">
                       Send Request
                     </button>
                   </div>

@@ -43,9 +43,7 @@ export const DataProvider = ({ children }) => {
   const addCourse = (code, name) => setCourses([...courses, { id: `c${courses.length + 1}`, code, name }]);
   const deleteCourse = (courseId) => setCourses(courses.filter(c => c.id !== courseId));
 
-  // --- PROJECTS (FIXED TIMEZONE, ADDED UPDATE & DELETE) ---
   const addProject = (p) => {
-    // toLocaleDateString('en-CA') forces local timezone YYYY-MM-DD format!
     const localDate = new Date().toLocaleDateString('en-CA'); 
     setProjects([...projects, { ...p, id: `p${projects.length + 1}`, creationDate: localDate, status: 'active', rating: 0 }]);
   };
@@ -57,18 +55,15 @@ export const DataProvider = ({ children }) => {
   const submitAppeal = (id, msg) => setProjects(projects.map(p => p.id === id ? { ...p, appealMessage: msg } : p));
   const resolveFlag = (id, deactivate) => setProjects(projects.map(p => p.id === id ? { ...p, isFlagged: false, status: deactivate ? 'deactivated' : 'active', flagReason: null, appealMessage: null } : p));
 
-  // Updated to accept and save the base64 fileData
   const uploadThesisDraft = (projectId, name, fileData) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setThesisDrafts([...thesisDrafts, { id: `d${Date.now()}`, projectId, name, fileData, date: localDate, isFinal: false }]);
   };
   const setFinalDraft = (projectId, draftId) => setThesisDrafts(thesisDrafts.map(d => d.projectId === projectId ? { ...d, isFinal: d.id === draftId } : d));
 
-// --- TASKS (Req 32) ---
   const addTask = (t) => setTasks([...tasks, { ...t, id: `t${Date.now()}` }]);
-  const updateTask = (id, updatedData) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updatedData } : t));
+  const updateTask = (id, updatedData) => setTasks(prevTasks => prevTasks.map(t => t.id === id ? { ...t, ...updatedData } : t));
   const deleteTask = (id) => setTasks(tasks.filter(t => t.id !== id));
-  // (We can leave toggleTaskStatus for legacy support, but we won't use it anymore)
   const toggleTaskStatus = (id) => setTasks(tasks.map(t => t.id === id ? { ...t, status: t.status === 'pending' ? 'completed' : 'pending' } : t));
   const addTaskComment = (c) => {
     const localDate = new Date().toLocaleDateString('en-CA');
@@ -84,21 +79,20 @@ export const DataProvider = ({ children }) => {
   const toggleInternshipStatus = (id) => setInternships(internships.map(i => i.id === id ? { ...i, status: i.status === 'hiring' ? 'filled' : 'hiring' } : i));
   const archiveInternship = (id) => setInternships(internships.map(i => i.id === id ? { ...i, isArchived: true } : i));
 
-  // --- Invites & Comments ---
   const sendInvitation = (pId, sId, rId) => {
-    // Check if an invite already exists for this person on this project
     const alreadyInvited = invitations.some(i => i.projectId === pId && i.receiverId === rId);
-    
     if (alreadyInvited) {
       if (showToast) showToast("This user has already been invited.", "error");
-      return; // Stop the duplicate!
+      return;
     }
-    
     setInvitations([...invitations, { id: `inv${Date.now()}`, projectId: pId, senderId: sId, receiverId: rId, status: 'pending', read: false }]);
     if (showToast) showToast("Invitation sent!");
   };
+  
   const updateInvitationStatus = (id, s) => setInvitations(invitations.map(i => i.id === id ? { ...i, status: s, read: true } : i));
   const deleteInvitation = (id) => setInvitations(invitations.filter(i => i.id !== id));
+  const toggleNotificationRead = (id) => setInvitations(invitations.map(i => i.id === id ? { ...i, read: !i.read } : i));
+
   const addProjectComment = (c) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setProjectComments([...projectComments, { ...c, id: `pc${projectComments.length + 1}`, date: localDate }]);
@@ -116,6 +110,44 @@ export const DataProvider = ({ children }) => {
   };
   const markMessagesRead = (receiverId, senderId) => setMessages(messages.map(m => (m.receiverId === receiverId && m.senderId === senderId) ? { ...m, read: true } : m));
 
+  // --- REQ 7: COURSE LINK/UNLINK REQUESTS ---
+  const sendCourseRequest = (senderId, courseCode, actionType) => {
+    const admin = users.find(u => u.role === 'Administrator');
+    if (!admin) return;
+
+    setInvitations(prev => [...prev, { 
+      id: `req${Date.now()}`, 
+      type: 'course_request', 
+      actionType, 
+      courseCode, 
+      senderId, 
+      receiverId: admin.id, 
+      status: 'pending', 
+      read: false 
+    }]);
+    if (showToast) showToast(`${actionType === 'link' ? 'Link' : 'Unlink'} request sent to Administrator!`);
+  };
+
+  const resolveCourseRequest = (reqId, newStatus) => {
+    const req = invitations.find(i => i.id === reqId);
+    if (!req) return;
+
+    setInvitations(invitations.map(i => i.id === reqId ? { ...i, status: newStatus, read: true } : i));
+
+    if (newStatus === 'accepted') {
+      const instructor = users.find(u => u.id === req.senderId);
+      if (instructor) {
+        let updatedCourses = instructor.linkedCourses || [];
+        if (req.actionType === 'link' && !updatedCourses.includes(req.courseCode)) {
+          updatedCourses = [...updatedCourses, req.courseCode];
+        } else if (req.actionType === 'unlink') {
+          updatedCourses = updatedCourses.filter(c => c !== req.courseCode);
+        }
+        updateUser(instructor.id, { linkedCourses: updatedCourses });
+      }
+    }
+  };
+
   return (
     <DataContext.Provider value={{ 
       users, addUser, updateUserStatus, updateUser, toggleUserActiveStatus, resetPassword,
@@ -123,13 +155,14 @@ export const DataProvider = ({ children }) => {
       projects, addProject, updateProject, deleteProject, rateProject, flagProject, submitAppeal, resolveFlag,
       thesisDrafts, uploadThesisDraft, setFinalDraft,
       internships, addInternship, toggleInternshipStatus, archiveInternship,
-      tasks, addTask, toggleTaskStatus,
+      tasks, addTask, toggleTaskStatus, updateTask, deleteTask,
       applications, addApplication, updateApplicationStatus,
       projectComments, addProjectComment, taskComments, addTaskComment,
-      invitations, sendInvitation, updateInvitationStatus, deleteInvitation,
+      invitations, sendInvitation, updateInvitationStatus, deleteInvitation, toggleNotificationRead,
+      sendCourseRequest, resolveCourseRequest,
       favorites, toggleFavorite, 
       messages, sendMessage, markMessagesRead,
-      toast, showToast, tasks, addTask, toggleTaskStatus, updateTask, deleteTask
+      toast, showToast
     }}>
       {children}
     </DataContext.Provider>
