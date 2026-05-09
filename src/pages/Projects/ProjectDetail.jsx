@@ -45,7 +45,7 @@ const ProjectDetail = () => {
     demoVideo: project?.demoVideo || '', visibility: project?.visibility || 'private'
   });
 
-  // Flag & Appeal States (Req 59, 61)
+  // Flag & Appeal States
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [flagReasonText, setFlagReasonText] = useState('');
   const [appealText, setAppealText] = useState('');
@@ -208,7 +208,6 @@ const ProjectDetail = () => {
     return u ? `${u.firstName} ${u.lastName}` : 'User';
   };
 
-  // Flag & Appeal Handlers
   const handleFlagSubmit = (e) => {
     e.preventDefault();
     if (!flagReasonText.trim()) return;
@@ -221,7 +220,6 @@ const ProjectDetail = () => {
     e.preventDefault();
     if (!appealText.trim()) return;
     submitAppeal(project.id, appealText);
-    if (showToast) showToast("Appeal submitted successfully!");
   };
 
   return (
@@ -246,7 +244,7 @@ const ProjectDetail = () => {
                   <button onClick={handleDeleteProject} className="flex items-center text-xs font-bold bg-red-50 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors"><Trash2 className="w-3.5 h-3.5 mr-1" /> Delete</button>
                 </>
               )}
-              {/* REQ 59: Flag Button for Admins/Instructors */}
+              {/* REQ 59: Flag Button */}
               {(currentUser?.role === 'Administrator' || currentUser?.role === 'Course Instructor') && !project.isFlagged && (
                 <button onClick={() => setShowFlagModal(true)} className="flex items-center text-xs font-bold bg-orange-50 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors">
                   <Flag className="w-3.5 h-3.5 mr-1" /> Flag Project
@@ -324,21 +322,26 @@ const ProjectDetail = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
 
-          {/* REQ 61: APPEAL BANNER FOR STUDENT */}
+          {/* REQ 61: Dynamic Appeal Banner */}
           {project.isFlagged && isCreator && (
-            <div className="bg-red-50 border border-red-200 p-5 rounded-2xl shadow-sm">
-              <h3 className="text-red-700 font-bold flex items-center text-lg"><AlertTriangle className="w-5 h-5 mr-2" /> Project Flagged & Deactivated</h3>
-              <p className="text-sm text-red-600 mt-1 mb-4"><strong>Reason:</strong> {project.flagReason}</p>
+            <div className={`p-5 rounded-2xl shadow-sm border ${project.appealMessage ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'}`}>
+              <h3 className={`${project.appealMessage ? 'text-yellow-700' : 'text-red-700'} font-bold flex items-center text-lg`}>
+                <AlertTriangle className="w-5 h-5 mr-2" /> 
+                {project.appealMessage ? 'Project Flagged (Under Appeal Review)' : 'Project Flagged & Deactivated'}
+              </h3>
+              <p className={`text-sm mt-1 mb-4 ${project.appealMessage ? 'text-yellow-600' : 'text-red-600'}`}>
+                <strong>Reason:</strong> {project.flagReason}
+              </p>
               {!project.appealMessage ? (
                 <form onSubmit={handleAppealSubmit} className="flex flex-col sm:flex-row gap-2">
                   <input type="text" placeholder="Write a short appeal message to explain your situation..." required className="flex-1 px-3 py-2 text-sm border border-red-200 rounded-lg outline-none focus:ring-2 focus:ring-red-400" value={appealText} onChange={e => setAppealText(e.target.value)} />
                   <button type="submit" className="bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-red-700 whitespace-nowrap shadow-sm">Submit Appeal</button>
                 </form>
               ) : (
-                <div className="bg-white p-3 rounded-lg border border-red-100">
-                  <p className="text-sm font-bold text-green-700 flex items-center"><CheckCircle2 className="w-4 h-4 mr-1"/> Appeal submitted!</p>
+                <div className="bg-white p-3 rounded-lg border border-yellow-100">
+                  <p className="text-sm font-bold text-yellow-700 flex items-center"><CheckCircle2 className="w-4 h-4 mr-1"/> Appeal submitted!</p>
                   <p className="text-xs text-gray-600 mt-1">"{project.appealMessage}"</p>
-                  <p className="text-xs text-gray-500 mt-1 italic">Awaiting administrator review.</p>
+                  <p className="text-xs text-gray-500 mt-1 italic">Your project is temporarily active while awaiting administrator review.</p>
                 </div>
               )}
             </div>

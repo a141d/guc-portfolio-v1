@@ -6,17 +6,16 @@ import { useData } from '../../context/DataContext';
 
 const Topbar = () => {
   const { currentUser } = useAuth();
-  const { messages, invitations } = useData(); // <-- Added invitations here
+  const { messages, invitations } = useData(); 
   const navigate = useNavigate(); 
 
-  // Calculate unread badges
   const unreadMessages = messages.filter(m => m.receiverId === currentUser?.id && !m.read).length;
-  const unreadNotifications = invitations.filter(inv => inv.receiverId === currentUser?.id && !inv.read).length; // <-- Added this
+  const unreadNotifications = invitations.filter(inv => inv.receiverId === currentUser?.id && !inv.read).length; 
 
   const handleSearch = (e) => {
     if (e.key === 'Enter' && e.target.value) {
       if (currentUser?.role === 'Employer') {
-        navigate('/internships');
+        navigate('/manage-applicants');
       } else {
         navigate('/explore');
       }
@@ -25,7 +24,8 @@ const Topbar = () => {
 
   const handleCreateClick = () => {
     if (currentUser?.role === 'Employer') {
-      navigate('/manage-applicants'); 
+      // Pass state to automatically pop open the modal!
+      navigate('/manage-applicants', { state: { openCreate: true } }); 
     } else {
       navigate('/projects'); 
     }
@@ -37,7 +37,6 @@ const Topbar = () => {
 
       <div className="flex items-center space-x-6">
         
-        {/* Search Bar */}
         <div className="relative group">
           <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2 group-focus-within:text-primary transition-colors" />
           <input 
@@ -48,13 +47,11 @@ const Topbar = () => {
           />
         </div>
 
-        {/* Create Button */}
         <button onClick={handleCreateClick} className="bg-primary text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-gray-800 hover:shadow-md hover:-translate-y-0.5 transition-all flex items-center gap-2">
           <Plus className="w-4 h-4" /> Create
         </button>
 
         <div className="flex items-center space-x-3">
-          {/* Notifications Bell with Badge */}
           <Link to="/notifications" className="p-2 bg-white rounded-full border border-gray-200 text-gray-500 hover:text-primary hover:shadow-sm transition-all relative">
             <Bell className="w-5 h-5" />
             {unreadNotifications > 0 && (
@@ -62,7 +59,6 @@ const Topbar = () => {
             )}
           </Link>
           
-          {/* Messages Icon with Badge */}
           <Link to="/messages" className="p-2 bg-white rounded-full border border-gray-200 text-gray-500 hover:text-primary hover:shadow-sm transition-all relative">
             <MessageSquare className="w-5 h-5" />
             {unreadMessages > 0 && (
@@ -71,7 +67,6 @@ const Topbar = () => {
           </Link>
         </div>
 
-        {/* User Profile */}
         <div className="flex items-center space-x-3 pl-4 border-l border-gray-200">
           <div className="text-right hidden md:block">
             <Link to={`/portfolios/${currentUser?.id}`} className="text-sm font-bold text-primary hover:text-blue-600 transition-colors block">

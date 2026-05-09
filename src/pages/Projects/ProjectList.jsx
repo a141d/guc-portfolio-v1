@@ -2,14 +2,18 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { Plus, Folder, Code, Eye, EyeOff, Users, AlertTriangle } from 'lucide-react'; 
+import { Plus, Folder, Code, Eye, EyeOff, Users, AlertTriangle, Heart } from 'lucide-react'; 
 import CreateProjectForm from '../../components/projects/CreateProjectForm';
 import { Link } from 'react-router-dom';
 
 const ProjectList = () => {
   const { currentUser } = useAuth();
-  const { projects, courses, updateProject, showToast, invitations } = useData(); 
+  // Bring in toggleFavorite and favorites from DataContext
+  const { projects, courses, updateProject, showToast, invitations, toggleFavorite, favorites } = useData(); 
   const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // Check if the current user has the right to save favorites
+  const canSaveFavorites = currentUser?.role === 'Student' || currentUser?.role === 'Employer';
 
   // Filter projects to only show ones where the user is Creator or Collaborator
   const userProjects = projects.filter(p => {
@@ -57,13 +61,16 @@ const ProjectList = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {userProjects.map(project => {
           const isCreator = project.creatorId === currentUser?.id;
+          
+          // Check if this specific project is in the user's favorites
+          const isFav = favorites.some(f => f.userId === currentUser?.id && f.itemId === project.id && f.type === 'project');
 
           return (
             <div key={project.id} className={`bg-surface p-6 rounded-2xl shadow-sm border transition-shadow flex flex-col h-full relative group ${project.status === 'deactivated' ? 'border-red-200 bg-red-50 hover:shadow-md' : 'border-gray-100 hover:shadow-md'}`}>
               
               {/* WARNING INDICATOR: If project is flagged/deactivated */}
               {project.status === 'deactivated' && (
-                <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-lg flex items-center">
+                <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-lg flex items-center z-10">
                   <AlertTriangle className="w-3 h-3 mr-1" /> Deactivated (Flagged)
                 </div>
               )}
@@ -73,29 +80,43 @@ const ProjectList = () => {
                   {isCreator ? <Folder className="w-6 h-6" /> : <Users className="w-6 h-6" />}
                 </div>
                 
-                {isCreator ? (
-                  <button 
-                    onClick={() => handleToggleVisibility(project)}
-                    title="Click to toggle portfolio visibility"
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase transition-all hover:scale-105 shadow-sm border ${
+                <div className="flex items-center gap-2">
+                  {/* REQ 65: Favorite Toggle Button */}
+                  {canSaveFavorites && (
+                    <button 
+                      onClick={(e) => { e.preventDefault(); toggleFavorite(currentUser.id, project.id, 'project'); }}
+                      className="p-1.5 bg-white rounded-full border border-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500 shadow-sm transition-all hover:scale-110 z-10"
+                      title={isFav ? "Remove from favorites" : "Save to favorites"}
+                    >
+                      <Heart className={`w-4 h-4 ${isFav ? 'fill-red-500 text-red-500' : ''}`} />
+                    </button>
+                  )}
+
+                  {/* Visibility Button/Badge */}
+                  {isCreator ? (
+                    <button 
+                      onClick={() => handleToggleVisibility(project)}
+                      title="Click to toggle portfolio visibility"
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold uppercase transition-all hover:scale-105 shadow-sm border ${
+                        project.visibility === 'public' 
+                          ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
+                          : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                      }`}
+                    >
+                      {project.visibility === 'public' ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      {project.visibility}
+                    </button>
+                  ) : (
+                    <span className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold uppercase shadow-sm border ${
                       project.visibility === 'public' 
-                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
-                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
-                    }`}
-                  >
-                    {project.visibility === 'public' ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    {project.visibility}
-                  </button>
-                ) : (
-                  <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase shadow-sm border ${
-                    project.visibility === 'public' 
-                      ? 'bg-green-50 text-green-700 border-green-200' 
-                      : 'bg-gray-100 text-gray-600 border-gray-200'
-                  }`}>
-                    {project.visibility === 'public' ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    {project.visibility}
-                  </span>
-                )}
+                        ? 'bg-green-50 text-green-700 border-green-200' 
+                        : 'bg-gray-100 text-gray-600 border-gray-200'
+                    }`}>
+                      {project.visibility === 'public' ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      {project.visibility}
+                    </span>
+                  )}
+                </div>
               </div>
               
               <Link to={`/projects/${project.id}`}>

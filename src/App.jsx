@@ -17,7 +17,7 @@ import ExploreProjects from './pages/Projects/ExploreProjects';
 import Notifications from './pages/Dashboard/Notifications';
 import Favorites from './pages/Dashboard/Favorites';
 import Messages from './pages/Dashboard/Messages';
-
+import CourseList from './pages/Courses/CourseList'; // <-- IMPORT ADDED
 
 // Protects routes that require a logged-in user
 const ProtectedRoute = ({ children }) => {
@@ -39,31 +39,21 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            {/* Public Authentication Routes */}
             <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
             <Route path="/register" element={<AuthRoute><Register /></AuthRoute>} />
 
-            {/* ONE SINGLE Protected Application Layout Route */}
             <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route index element={<DashboardHome />} />
-
-              {/* Project Routes */}
               <Route path="projects" element={<ProjectList />} />
               <Route path="projects/:id" element={<ProjectDetail />} />
-              <Route path="explore" element={<ExploreProjects />} /> {/* Moved safely inside Layout! */}
-
-              {/* Portfolio Routes */}
+              <Route path="explore" element={<ExploreProjects />} /> 
               <Route path="portfolios" element={<PortfolioList />} />
               <Route path="portfolios/:id" element={<PortfolioDetail />} />
-
-              {/* Internship & Employer Routes */}
+              <Route path="courses" element={<CourseList />} /> {/* <-- ROUTE ADDED */}
               <Route path="internships" element={<InternshipList />} />
               <Route path="manage-applicants" element={<ManageApplicants />} />
-
-              {/* Admin Routes */}
               <Route path="admin" element={<AdminDashboard />} />
               <Route path="notifications" element={<Notifications />} />
-
               <Route path="favorites" element={<Favorites />} />
               <Route path="messages" element={<Messages />} />
             </Route>

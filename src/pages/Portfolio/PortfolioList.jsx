@@ -1,19 +1,21 @@
 // src/pages/Portfolio/PortfolioList.jsx
 import { useState } from 'react';
 import { useData } from '../../context/DataContext';
-import { Search, Filter, ArrowRight, BookOpen, ArrowUpDown, Folder } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { Search, Filter, ArrowRight, BookOpen, ArrowUpDown, Folder, Heart } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const PortfolioList = () => {
-  const { users, projects, courses } = useData();
+  const { users, projects, courses, toggleFavorite, favorites } = useData();
+  const { currentUser } = useAuth();
   
-  // --- STATES ---
   const [activeTab, setActiveTab] = useState('Student'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterOption, setFilterOption] = useState(''); 
   const [sortOption, setSortOption] = useState('most-projects'); 
 
-  // Handle Tab Switch
+  const canSaveFavorites = currentUser?.role === 'Student' || currentUser?.role === 'Employer';
+
   const handleTabSwitch = (tab) => {
     setActiveTab(tab);
     setSearchQuery('');
@@ -27,7 +29,6 @@ const PortfolioList = () => {
     return projects.filter(p => p.creatorId === userId && p.visibility === 'public' && p.status !== 'deactivated').length;
   };
 
-  // --- REQ 47 & 48: FILTER LOGIC ---
   const filteredUsers = displayUsers.filter(user => {
     const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
     const email = user.email?.toLowerCase() || ''; 
@@ -48,7 +49,6 @@ const PortfolioList = () => {
     return matchesSearch && matchesFilter;
   });
 
-  // --- REQ 50: PRE-CALCULATE AND SORT ---
   const enhancedUsers = filteredUsers.map(user => ({
     ...user,
     projectCount: activeTab === 'Student' ? getProjectCount(user.id) : 0
@@ -67,7 +67,6 @@ const PortfolioList = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-primary">University Directory</h2>
         
-        {/* Toggle Switch */}
         <div className="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
           <button 
             onClick={() => handleTabSwitch('Student')}
@@ -84,56 +83,28 @@ const PortfolioList = () => {
         </div>
       </div>
 
-      {/* Top Search, Filter, and Sort Bar */}
       <div className="bg-surface p-4 rounded-2xl shadow-sm border border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-        
         <div className="relative">
           <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-          <input 
-            type="text" 
-            placeholder={activeTab === 'Student' ? "Search by name, email, or skill..." : "Search by name or email..."}
-            className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          <input type="text" placeholder={activeTab === 'Student' ? "Search by name, email, or skill..." : "Search by name or email..."} className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
 
         <div className="relative">
           <Filter className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-          <select 
-            className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white appearance-none cursor-pointer"
-            value={filterOption}
-            onChange={(e) => setFilterOption(e.target.value)}
-          >
+          <select className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white appearance-none cursor-pointer" value={filterOption} onChange={(e) => setFilterOption(e.target.value)}>
             {activeTab === 'Student' ? (
-              <>
-                <option value="">All Majors</option>
-                <option value="MET">MET</option>
-                <option value="IET">IET</option>
-                <option value="BI">BI</option>
-              </>
+              <><option value="">All Majors</option><option value="MET">MET</option><option value="IET">IET</option><option value="BI">BI</option></>
             ) : (
-              <>
-                <option value="">All Courses</option>
-                {courses.map(c => <option key={c.code} value={c.code}>{c.code} - {c.name}</option>)}
-              </>
+              <><option value="">All Courses</option>{courses.map(c => <option key={c.code} value={c.code}>{c.code} - {c.name}</option>)}</>
             )}
           </select>
         </div>
 
-        {/* Sorting Dropdown */}
         <div className="relative">
           <ArrowUpDown className="w-5 h-5 text-blue-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
-          <select 
-            className="pl-10 pr-4 py-2 w-full border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-blue-50 text-blue-800 font-medium appearance-none cursor-pointer"
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value)}
-          >
+          <select className="pl-10 pr-4 py-2 w-full border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-blue-50 text-blue-800 font-medium appearance-none cursor-pointer" value={sortOption} onChange={(e) => setSortOption(e.target.value)}>
             {activeTab === 'Student' && (
-              <>
-                <option value="most-projects">Sort: Most Projects</option>
-                <option value="fewest-projects">Sort: Fewest Projects</option>
-              </>
+              <><option value="most-projects">Sort: Most Projects</option><option value="fewest-projects">Sort: Fewest Projects</option></>
             )}
             <option value="name-asc">Sort: Name (A to Z)</option>
             <option value="name-desc">Sort: Name (Z to A)</option>
@@ -141,69 +112,69 @@ const PortfolioList = () => {
         </div>
       </div>
 
-      {/* Directory Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {sortedUsers.map(user => (
-          /* Card is a standard DIV now */
-          <div 
-            key={user.id} 
-            className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all flex flex-col items-center text-center relative"
-          >
-            <img src={user.profilePic} alt="Profile" className="w-20 h-20 rounded-full mb-4 border-2 border-gray-50 shadow-sm object-cover" />
-            
-            {/* REQ 51 FIXED: Only the Name is the clickable link! */}
-            <Link to={`/portfolios/${user.id}`}>
-              <h3 className="text-lg font-bold text-primary hover:text-blue-600 hover:underline transition-colors">
-                {user.firstName} {user.lastName}
-              </h3>
-            </Link>
-            
-            {activeTab === 'Student' ? (
-              <p className="text-sm text-gray-500 mb-2 mt-1">{user.major || 'No Major Set'}</p>
-            ) : (
-              <p className="text-sm text-purple-600 mb-2 mt-1 font-medium">Instructor</p>
-            )}
-            
-            <div className="flex gap-2 mb-4 justify-center flex-wrap h-14 overflow-hidden">
-              {activeTab === 'Student' ? (
-                user.skills?.slice(0, 3).map(skill => (
-                  <span key={skill} className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md text-xs border border-gray-200">{skill}</span>
-                ))
-              ) : (
-                user.linkedCourses?.map(course => (
-                  <span key={course} className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-bold flex items-center">
-                    <BookOpen className="w-3 h-3 mr-1" /> {course}
-                  </span>
-                ))
-              )}
-            </div>
+        {sortedUsers.map(user => {
+          const isFav = favorites.some(f => f.userId === currentUser?.id && f.itemId === user.id && f.type === 'portfolio');
 
-            <div className="mt-auto w-full pt-4 border-t border-gray-100 flex items-center justify-between">
+          return (
+            <div key={user.id} className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all flex flex-col items-center text-center relative">
+              
+              {/* REQ 65: Favorite Toggle Button for Portfolios */}
+              {canSaveFavorites && user.id !== currentUser?.id && (
+                <div className="absolute top-4 right-4">
+                  <button 
+                    onClick={(e) => { e.preventDefault(); toggleFavorite(currentUser.id, user.id, 'portfolio'); }}
+                    className="p-2 bg-gray-50 rounded-full border border-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500 shadow-sm transition-all hover:scale-110"
+                    title={isFav ? "Remove from favorites" : "Save to favorites"}
+                  >
+                    <Heart className={`w-4 h-4 ${isFav ? 'fill-red-500 text-red-500' : ''}`} />
+                  </button>
+                </div>
+              )}
+
+              <img src={user.profilePic} alt="Profile" className="w-20 h-20 rounded-full mb-4 border-2 border-gray-50 shadow-sm object-cover" />
+              
+              <Link to={`/portfolios/${user.id}`}>
+                <h3 className="text-lg font-bold text-primary hover:text-blue-600 hover:underline transition-colors">
+                  {user.firstName} {user.lastName}
+                </h3>
+              </Link>
+              
               {activeTab === 'Student' ? (
-                <span className="flex items-center text-sm text-gray-500 font-medium">
-                  <Folder className="w-4 h-4 mr-1.5 text-blue-500" />
-                  {user.projectCount} Public Projects
-                </span>
+                <p className="text-sm text-gray-500 mb-2 mt-1">{user.major || 'No Major Set'}</p>
               ) : (
-                <span className="text-sm text-gray-500 font-medium">View Teaching Profile</span>
+                <p className="text-sm text-purple-600 mb-2 mt-1 font-medium">Instructor</p>
               )}
               
-              {/* Added a small view button at the bottom as a secondary click target */}
-              <Link to={`/portfolios/${user.id}`} className="flex items-center text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-colors">
-                View <ArrowRight className="w-4 h-4 ml-1" />
-              </Link>
+              <div className="flex gap-2 mb-4 justify-center flex-wrap h-14 overflow-hidden">
+                {activeTab === 'Student' ? (
+                  user.skills?.slice(0, 3).map(skill => <span key={skill} className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md text-xs border border-gray-200">{skill}</span>)
+                ) : (
+                  user.linkedCourses?.map(course => <span key={course} className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-bold flex items-center"><BookOpen className="w-3 h-3 mr-1" /> {course}</span>)
+                )}
+              </div>
+
+              <div className="mt-auto w-full pt-4 border-t border-gray-100 flex items-center justify-between">
+                {activeTab === 'Student' ? (
+                  <span className="flex items-center text-sm text-gray-500 font-medium">
+                    <Folder className="w-4 h-4 mr-1.5 text-blue-500" />
+                    {user.projectCount} Public Projects
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-500 font-medium">View Teaching Profile</span>
+                )}
+                
+                <Link to={`/portfolios/${user.id}`} className="flex items-center text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-colors">
+                  View <ArrowRight className="w-4 h-4 ml-1" />
+                </Link>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         {sortedUsers.length === 0 && (
           <div className="col-span-full py-12 text-center text-gray-500">
             No {activeTab === 'Student' ? 'students' : 'instructors'} found matching your search.
-            <button 
-              onClick={() => { setSearchQuery(''); setFilterOption(''); }} 
-              className="block mx-auto mt-2 text-sm text-blue-600 hover:underline font-bold"
-            >
-              Clear all filters
-            </button>
+            <button onClick={() => { setSearchQuery(''); setFilterOption(''); }} className="block mx-auto mt-2 text-sm text-blue-600 hover:underline font-bold">Clear all filters</button>
           </div>
         )}
       </div>
