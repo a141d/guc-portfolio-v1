@@ -1,6 +1,7 @@
+// src/pages/Dashboard/Notifications.jsx
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, Check, X, MailOpen, Mail } from 'lucide-react';
+import { Bell, Check, X, MailOpen, Mail, MessageSquare } from 'lucide-react';
 
 const Notifications = () => {
   const { invitations, projects, users, updateInvitationStatus, toggleNotificationRead, resolveCourseRequest } = useData();
@@ -16,7 +17,7 @@ const Notifications = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-primary flex items-center">
-          <Bell className="w-6 h-6 mr-2" /> Notifications & Invites
+          <Bell className="w-6 h-6 mr-2" /> Notifications
         </h2>
       </div>
 
@@ -30,26 +31,41 @@ const Notifications = () => {
               const isCourseReq = notif.type === 'course_request';
               const project = !isCourseReq ? getProject(notif.projectId) : null;
 
+              // REQ 41: Dynamic Text based on Notification Type
+              let messageText = null;
+              if (notif.type === 'course_request') {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> requested to <span className="font-bold text-primary uppercase">{notif.actionType}</span> the course <span className="font-bold">{notif.courseCode}</span>.</>;
+              } else if (notif.type === 'feedback_project') {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> left new instructor feedback on your project <span className="font-bold text-primary">{project?.title}</span>.</>;
+              } else if (notif.type === 'feedback_task') {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> left feedback on a task assigned to you in <span className="font-bold text-primary">{project?.title}</span>.</>;
+              } else {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> invited you to collaborate on <span className="font-bold text-primary">{project?.title}</span>.</>;
+              }
+
               return (
                 <div key={notif.id} className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${notif.read ? 'bg-white border-gray-100' : 'bg-blue-50 border-blue-100'}`}>
-                  <div>
-                    {isCourseReq ? (
-                       <p className="text-sm text-gray-800">
-                        <span className="font-bold">{sender?.firstName} {sender?.lastName}</span> requested to <span className="font-bold text-primary uppercase">{notif.actionType}</span> the course <span className="font-bold">{notif.courseCode}</span>.
-                       </p>
-                    ) : (
-                       <p className="text-sm text-gray-800">
-                         <span className="font-bold">{sender?.firstName} {sender?.lastName}</span> invited you to collaborate on <span className="font-bold text-primary">{project?.title}</span>.
-                       </p>
-                    )}
+                  <div className="flex items-start gap-3">
                     
-                    <span className={`text-xs font-bold px-2 py-1 rounded-md mt-2 inline-block
-                      ${notif.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}
-                      ${notif.status === 'accepted' ? 'bg-green-100 text-green-700' : ''}
-                      ${notif.status === 'rejected' ? 'bg-red-100 text-red-700' : ''}
-                    `}>
-                      Status: {notif.status.charAt(0).toUpperCase() + notif.status.slice(1)}
-                    </span>
+                    {/* Visual icon indicator depending on type */}
+                    <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${notif.type?.includes('feedback') ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                      {notif.type?.includes('feedback') ? <MessageSquare className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-800">{messageText}</p>
+                      
+                      {/* Hide the status pill if it's just an 'info' notification like feedback */}
+                      {notif.status !== 'info' && (
+                        <span className={`text-xs font-bold px-2 py-1 rounded-md mt-2 inline-block
+                          ${notif.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}
+                          ${notif.status === 'accepted' ? 'bg-green-100 text-green-700' : ''}
+                          ${notif.status === 'rejected' ? 'bg-red-100 text-red-700' : ''}
+                        `}>
+                          Status: {notif.status.charAt(0).toUpperCase() + notif.status.slice(1)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -61,7 +77,8 @@ const Notifications = () => {
                       {notif.read ? <Mail className="w-5 h-5" /> : <MailOpen className="w-5 h-5" />}
                     </button>
                     
-                    {notif.status === 'pending' && (
+                    {/* Only show Accept/Reject for actual pending invitations/requests */}
+                    {notif.status === 'pending' && !notif.type?.includes('feedback') && (
                       <>
                         <button 
                           onClick={() => isCourseReq ? resolveCourseRequest(notif.id, 'accepted') : updateInvitationStatus(notif.id, 'accepted')} 

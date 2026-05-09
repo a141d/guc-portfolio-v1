@@ -1,14 +1,17 @@
+// src/pages/Projects/ProjectDetail.jsx
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, MessageSquare, Star, AlertTriangle, Folder, PlaySquare, Code, Edit, Trash2, Eye, FileText, X, Search, CheckSquare, ChevronUp, ChevronDown, CheckCircle2, Circle } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Star, AlertTriangle, Folder, PlaySquare, Code, Edit, Trash2, Eye, FileText, X, Search, CheckSquare, ChevronUp, ChevronDown } from 'lucide-react';
+
 const ProjectDetail = () => {
+  // --- 1. HOOKS & CONTEXT ---
   const { id } = useParams();
   const navigate = useNavigate();
   const {
     projects, courses, tasks, addTask, updateTask, deleteTask, users,
-    updateProject, deleteProject, rateProject, projectComments, addProjectComment, taskComments, addTaskComment,
+    updateProject, deleteProject, rateProject, projectComments, addProjectComment, updateProjectComment, deleteProjectComment, taskComments, addTaskComment,
     invitations, sendInvitation, deleteInvitation,
     thesisDrafts, uploadThesisDraft, setFinalDraft, showToast 
   } = useData();
@@ -16,32 +19,22 @@ const ProjectDetail = () => {
 
   const project = projects.find(p => p.id === id);
   const course = courses.find(c => c.id === project?.courseId);
-  
-  // REQ 34: Sort tasks by their order
-  const projectTasks = tasks
-    .filter(t => t.projectId === id)
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
-    
-  const projComments = projectComments.filter(c => c.projectId === id);
-  const projectDrafts = thesisDrafts?.filter(d => d.projectId === id) || [];
 
+  // --- 2. COMPONENT STATE (Must be declared before we use them!) ---
   const [newProjComment, setNewProjComment] = useState('');
   const [newTaskCommentText, setNewTaskCommentText] = useState({});
   const [activeTaskComment, setActiveTaskComment] = useState(null);
-
+  const [editingProjCommentId, setEditingProjCommentId] = useState(null);
+  const [editProjCommentText, setEditProjCommentText] = useState('');
   const [newDraftName, setNewDraftName] = useState('');
   const [newDraftFile, setNewDraftFile] = useState(null); 
   const [viewingPdf, setViewingPdf] = useState(null);
-
   const [inviteSearchQuery, setInviteSearchQuery] = useState('');
-
-  // --- REQ 32: Advanced Task States ---
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskDeadline, setNewTaskDeadline] = useState(new Date().toLocaleDateString('en-CA'));
   const [newTaskAssignee, setNewTaskAssignee] = useState(project?.creatorId || '');
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editTaskData, setEditTaskData] = useState({});
-
   const [isEditingProj, setIsEditingProj] = useState(false);
   const [projFormData, setProjFormData] = useState({
     title: project?.title || '', courseId: project?.courseId || '',
@@ -49,25 +42,23 @@ const ProjectDetail = () => {
     demoVideo: project?.demoVideo || '', visibility: project?.visibility || 'private'
   });
 
-  // Ensure default assignee is set when project loads
-  useEffect(() => {
-    if (project && !newTaskAssignee) setNewTaskAssignee(project.creatorId);
-  }, [project]);
+  // --- 3. DERIVED DATA & AUTHORIZATION ---
+  const ratings = project?.ratings || [];
+  const totalRatings = ratings.length;
+  const averageScore = totalRatings > 0 ? (ratings.reduce((sum, r) => sum + r.score, 0) / totalRatings).toFixed(1) : 0;
+  const myRating = ratings.find(r => r.instructorId === currentUser?.id)?.score || 0;
 
-  if (!project) return <div className="p-8 text-center text-gray-500">Project not found.</div>;
-
-  // --- STRICT AUTHORIZATION LOGIC ---
-  const isCreator = currentUser?.id === project.creatorId;
-  const isAcceptedCollaborator = invitations?.some(inv => inv.projectId === project.id && inv.receiverId === currentUser?.id && inv.status === 'accepted');
+  const isCreator = currentUser?.id === project?.creatorId;
+  const isAcceptedCollaborator = invitations?.some(inv => inv.projectId === id && inv.receiverId === currentUser?.id && inv.status === 'accepted');
   const isCourseInstructor = currentUser?.role === 'Course Instructor' && currentUser?.linkedCourses?.includes(course?.code);
   const canManageProject = isCreator || isAcceptedCollaborator;
+  const canViewFeedback = canManageProject || isCourseInstructor || currentUser?.role === 'Administrator';
 
-  // --- Dynamic Team List (For Task Assignments) ---
-  const teamMembers = [
-    users.find(u => u.id === project.creatorId),
-    ...invitations.filter(inv => inv.projectId === project.id && inv.status === 'accepted').map(inv => users.find(u => u.id === inv.receiverId))
-  ].filter(Boolean);
-
+  // --- 4. FILTERED LISTS ---
+  const projectTasks = tasks.filter(t => t.projectId === id).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const projComments = projectComments.filter(c => c.projectId === id);
+  const projectDrafts = thesisDrafts?.filter(d => d.projectId === id) || [];
+  
   const hasFinalDraft = projectDrafts.some(d => d.isFinal);
   const visibleDrafts = projectDrafts.filter(draft => {
     if (canManageProject) return true; 
@@ -75,6 +66,12 @@ const ProjectDetail = () => {
     return true; 
   });
 
+  const teamMembers = [
+    users.find(u => u.id === project?.creatorId),
+    ...invitations.filter(inv => inv.projectId === id && inv.status === 'accepted').map(inv => users.find(u => u.id === inv.receiverId))
+  ].filter(Boolean);
+
+  // Safely uses inviteSearchQuery because it was declared at the top!
   const availableUsersToInvite = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (u.role !== 'Student' && u.role !== 'Course Instructor') return false;
@@ -85,7 +82,14 @@ const ProjectDetail = () => {
     return false;
   });
 
-  // --- Handlers ---
+  // --- 5. EFFECTS ---
+  useEffect(() => {
+    if (project && !newTaskAssignee) setNewTaskAssignee(project.creatorId);
+  }, [project]);
+
+  if (!project) return <div className="p-8 text-center text-gray-500">Project not found.</div>;
+
+  // --- 6. HANDLERS ---
   const handleDraftUploadChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -124,66 +128,52 @@ const ProjectDetail = () => {
     e.preventDefault();
     updateProject(project.id, { ...projFormData, languages: projFormData.languages.split(',').map(l => l.trim()) });
     setIsEditingProj(false);
-    if(showToast) showToast("Project updated successfully!");
+    if (showToast) showToast("Project updated successfully!");
   };
 
   const handleDeleteProject = () => {
     if (window.confirm("Are you sure you want to completely delete this project? This action cannot be undone.")) {
-        deleteProject(project.id);
-        navigate('/projects');
-        if(showToast) showToast("Project deleted.", "error");
+      deleteProject(project.id);
+      navigate('/projects');
+      if (showToast) showToast("Project deleted.", "error");
     }
   };
 
-  // REQ 32 & 34: Create Task with Order
   const handleAddTask = (e) => {
     e.preventDefault();
     if (!newTaskDesc.trim()) return;
-    
-    // BP Projects lock the assignee to the creator
     const finalAssignee = course?.code === 'BP' ? project.creatorId : (parseInt(newTaskAssignee) || project.creatorId);
-
-    addTask({ 
-      projectId: project.id, 
-      description: newTaskDesc, 
-      assigneeId: finalAssignee, 
-      status: 'pending', 
+    addTask({
+      projectId: project.id,
+      description: newTaskDesc,
+      assigneeId: finalAssignee,
+      status: 'pending',
       deadline: newTaskDeadline,
-      order: projectTasks.length > 0 ? Math.max(...projectTasks.map(t => t.order || 0)) + 1 : 1 
+      order: projectTasks.length > 0 ? Math.max(...projectTasks.map(t => t.order || 0)) + 1 : 1
     });
-    
     setNewTaskDesc('');
     setNewTaskDeadline(new Date().toLocaleDateString('en-CA'));
-    if(showToast) showToast("Task created successfully!");
+    if (showToast) showToast("Task created successfully!");
   };
 
-  // REQ 32: Save Edited Task
   const handleSaveEditTask = () => {
     updateTask(editingTaskId, editTaskData);
     setEditingTaskId(null);
-    if(showToast) showToast("Task updated successfully!");
+    if (showToast) showToast("Task updated successfully!");
   };
 
-  // REQ 34: Move Task Up/Down
   const moveTask = (task, direction) => {
     const idx = projectTasks.findIndex(t => t.id === task.id);
-    
     if (direction === 'up' && idx > 0) {
       const prevTask = projectTasks[idx - 1];
-      
-      // Get exact orders, or fallback to their current index position
       const taskOrder = task.order !== undefined ? task.order : idx + 1;
       const prevTaskOrder = prevTask.order !== undefined ? prevTask.order : idx;
-      
       updateTask(task.id, { order: prevTaskOrder });
       updateTask(prevTask.id, { order: taskOrder });
-      
     } else if (direction === 'down' && idx < projectTasks.length - 1) {
       const nextTask = projectTasks[idx + 1];
-      
       const taskOrder = task.order !== undefined ? task.order : idx + 1;
       const nextTaskOrder = nextTask.order !== undefined ? nextTask.order : idx + 2;
-      
       updateTask(task.id, { order: nextTaskOrder });
       updateTask(nextTask.id, { order: taskOrder });
     }
@@ -194,6 +184,13 @@ const ProjectDetail = () => {
     if (!newProjComment.trim()) return;
     addProjectComment({ projectId: project.id, instructorId: currentUser.id, text: newProjComment });
     setNewProjComment('');
+  };
+
+  const handleSaveEditProjComment = (commentId) => {
+    if (!editProjCommentText.trim()) return;
+    updateProjectComment(commentId, editProjCommentText);
+    setEditingProjCommentId(null);
+    if (showToast) showToast("Feedback updated!");
   };
 
   const handleAddTaskComment = (taskId) => {
@@ -222,7 +219,7 @@ const ProjectDetail = () => {
               {project.status === 'deactivated' && <span className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded-full font-bold">DEACTIVATED</span>}
             </div>
             <p className="text-gray-500 font-medium">{course?.name} • Created {project.creationDate}</p>
-            
+
             {isCreator && (
               <div className="flex gap-2 mt-4">
                 <button onClick={() => setIsEditingProj(true)} className="flex items-center text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"><Edit className="w-3.5 h-3.5 mr-1" /> Edit Project</button>
@@ -232,11 +229,33 @@ const ProjectDetail = () => {
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className={`px-3 py-1 rounded-full text-xs font-medium border uppercase ${project.visibility === 'public' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>{project.visibility}</span>
-            <div className="flex items-center gap-1 mt-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button key={star} disabled={!isCourseInstructor} onClick={() => rateProject(project.id, star)} className={`${star <= (project.rating || 0) ? 'text-yellow-500' : 'text-gray-300'} ${isCourseInstructor ? 'hover:scale-110 cursor-pointer' : 'cursor-default'} transition-transform`}><Star className={`w-5 h-5 ${star <= (project.rating || 0) ? 'fill-current' : ''}`} /></button>
-              ))}
+
+            {/* REQ 39: Read-Only Global Average with Vector Fractional Stars */}
+            <div className="flex items-center gap-1.5 mt-1 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
+              <span className="text-sm font-bold text-gray-800">
+                {averageScore > 0 ? averageScore : '0.0'}
+              </span>
+
+              <div className="relative inline-flex">
+                <div className="flex">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star key={`empty-${star}`} className="w-4 h-4 text-gray-200" />
+                  ))}
+                </div>
+
+                <div
+                  className="flex absolute top-0 left-0 overflow-hidden"
+                  style={{ width: `${(averageScore / 5) * 100}%` }}
+                >
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star key={`gold-${star}`} className="w-4 h-4 text-yellow-500 fill-current shrink-0" />
+                  ))}
+                </div>
+              </div>
+
+              <span className="text-xs text-gray-500 font-medium ml-1">({totalRatings})</span>
             </div>
+
           </div>
         </div>
       </div>
@@ -247,12 +266,12 @@ const ProjectDetail = () => {
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-lg">
             <h3 className="text-xl font-bold mb-4">Edit Project</h3>
             <form onSubmit={handleUpdateProject} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Project Title</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.title} onChange={e => setProjFormData({...projFormData, title: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Course</label><select required className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.courseId} onChange={e => setProjFormData({...projFormData, courseId: e.target.value})}>{courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}</select></div>
-              <div><label className="block text-sm font-medium mb-1">GitHub Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.githubLink} onChange={e => setProjFormData({...projFormData, githubLink: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Demo Video Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.demoVideo} onChange={e => setProjFormData({...projFormData, demoVideo: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Languages (comma separated)</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.languages} onChange={e => setProjFormData({...projFormData, languages: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Visibility</label><select className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.visibility} onChange={e => setProjFormData({...projFormData, visibility: e.target.value})}><option value="private">Private</option><option value="public">Public</option></select></div>
+              <div><label className="block text-sm font-medium mb-1">Project Title</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.title} onChange={e => setProjFormData({ ...projFormData, title: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Course</label><select required className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.courseId} onChange={e => setProjFormData({ ...projFormData, courseId: e.target.value })}>{courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}</select></div>
+              <div><label className="block text-sm font-medium mb-1">GitHub Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.githubLink} onChange={e => setProjFormData({ ...projFormData, githubLink: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Demo Video Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.demoVideo} onChange={e => setProjFormData({ ...projFormData, demoVideo: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Languages (comma separated)</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.languages} onChange={e => setProjFormData({ ...projFormData, languages: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Visibility</label><select className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.visibility} onChange={e => setProjFormData({ ...projFormData, visibility: e.target.value })}><option value="private">Private</option><option value="public">Public</option></select></div>
               <div className="flex justify-end gap-2 pt-4"><button type="button" onClick={() => setIsEditingProj(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 text-sm text-white bg-primary rounded-lg hover:bg-gray-800">Save</button></div>
             </form>
           </div>
@@ -296,32 +315,29 @@ const ProjectDetail = () => {
 
           {/* TASK LIST (REQ 32: CRUD & Permissions) */}
           <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-6 flex items-center"><CheckSquare className="w-5 h-5 mr-2 text-blue-500"/> Task Management</h3>
-            
+            <h3 className="text-lg font-bold text-primary mb-6 flex items-center"><CheckSquare className="w-5 h-5 mr-2 text-blue-500" /> Task Management</h3>
+
             <div className="space-y-4 mb-6">
               {projectTasks.length === 0 && <p className="text-sm text-gray-500 italic">No tasks created yet.</p>}
-              
+
               {projectTasks.map((task, index) => {
                 const tComments = taskComments.filter(c => c.taskId === task.id);
-                
-                // REQ 32 Authorization: Collaborators can ONLY change status of THEIR task. Creator can do everything.
                 const canEditStatus = isCreator || currentUser?.id === task.assigneeId;
 
                 return editingTaskId === task.id ? (
-                  // --- INLINE EDIT FORM (Creator Only) ---
                   <div key={task.id} className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex flex-col gap-3 shadow-inner">
                     <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1">Edit Task</h4>
-                    <input type="text" value={editTaskData.description} onChange={e => setEditTaskData({...editTaskData, description: e.target.value})} className="border border-blue-200 p-2 rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-400"/>
+                    <input type="text" value={editTaskData.description} onChange={e => setEditTaskData({ ...editTaskData, description: e.target.value })} className="border border-blue-200 p-2 rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-400" />
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <input type="date" value={editTaskData.deadline} onChange={e => setEditTaskData({...editTaskData, deadline: e.target.value})} className="border border-blue-200 p-2 rounded-lg text-sm flex-1 outline-none"/>
-                      
+                      <input type="date" value={editTaskData.deadline} onChange={e => setEditTaskData({ ...editTaskData, deadline: e.target.value })} className="border border-blue-200 p-2 rounded-lg text-sm flex-1 outline-none" />
+
                       {course?.code !== 'BP' && (
-                        <select value={editTaskData.assigneeId} onChange={e => setEditTaskData({...editTaskData, assigneeId: parseInt(e.target.value)})} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none">
+                        <select value={editTaskData.assigneeId} onChange={e => setEditTaskData({ ...editTaskData, assigneeId: parseInt(e.target.value) })} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none">
                           {teamMembers.map(m => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}
                         </select>
                       )}
-                      
-                      <select value={editTaskData.status} onChange={e => setEditTaskData({...editTaskData, status: e.target.value})} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none font-medium">
+
+                      <select value={editTaskData.status} onChange={e => setEditTaskData({ ...editTaskData, status: e.target.value })} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none font-medium">
                         <option value="pending">Pending</option>
                         <option value="post-poned">Postponed</option>
                         <option value="completed">Completed</option>
@@ -333,29 +349,24 @@ const ProjectDetail = () => {
                     </div>
                   </div>
                 ) : (
-                  // --- TASK DISPLAY VIEW ---
                   <div key={task.id} className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
                     <div className="flex items-center justify-between p-4 bg-gray-50 hover:bg-white transition-colors">
                       <div className="flex items-center gap-3 flex-1">
-                        
-                        {/* REQ 34: Reorder arrows (Only visible to Creator) */}
                         {isCreator && (
                           <div className="flex flex-col mr-1 items-center justify-center text-gray-300">
-                            <button disabled={index === 0} onClick={() => moveTask(task, 'up')} className="hover:text-primary disabled:opacity-30 transition-colors"><ChevronUp className="w-4 h-4"/></button>
-                            <button disabled={index === projectTasks.length - 1} onClick={() => moveTask(task, 'down')} className="hover:text-primary disabled:opacity-30 transition-colors"><ChevronDown className="w-4 h-4"/></button>
+                            <button disabled={index === 0} onClick={() => moveTask(task, 'up')} className="hover:text-primary disabled:opacity-30 transition-colors"><ChevronUp className="w-4 h-4" /></button>
+                            <button disabled={index === projectTasks.length - 1} onClick={() => moveTask(task, 'down')} className="hover:text-primary disabled:opacity-30 transition-colors"><ChevronDown className="w-4 h-4" /></button>
                           </div>
                         )}
-                        
-                        {/* Status Dropdown (Creator or Assigned Collaborator) */}
+
                         <select
                           disabled={!canEditStatus}
                           value={task.status}
                           onChange={(e) => updateTask(task.id, { status: e.target.value })}
-                          className={`text-[10px] font-bold px-2 py-1 rounded border outline-none tracking-wider uppercase ${
-                            task.status === 'completed' ? 'bg-green-100 text-green-700 border-green-200' :
-                            task.status === 'post-poned' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                            'bg-blue-100 text-blue-700 border-blue-200'
-                          } ${!canEditStatus ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:shadow-sm transition-all'}`}
+                          className={`text-[10px] font-bold px-2 py-1 rounded border outline-none tracking-wider uppercase ${task.status === 'completed' ? 'bg-green-100 text-green-700 border-green-200' :
+                              task.status === 'post-poned' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                'bg-blue-100 text-blue-700 border-blue-200'
+                            } ${!canEditStatus ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:shadow-sm transition-all'}`}
                         >
                           <option value="pending">Pending</option>
                           <option value="post-poned">Postponed</option>
@@ -370,12 +381,11 @@ const ProjectDetail = () => {
 
                       <div className="flex items-center gap-4">
                         <span className="text-xs font-medium text-gray-400 whitespace-nowrap bg-white px-2 py-1 rounded border border-gray-100 shadow-sm">{task.deadline}</span>
-                        
-                        {/* ONLY Creator can fully Edit or Delete tasks */}
+
                         {isCreator && (
                           <div className="flex gap-1">
-                            <button onClick={() => { setEditingTaskId(task.id); setEditTaskData(task); }} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Task"><Edit className="w-4 h-4"/></button>
-                            <button onClick={() => deleteTask(task.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors" title="Delete Task"><Trash2 className="w-4 h-4"/></button>
+                            <button onClick={() => { setEditingTaskId(task.id); setEditTaskData(task); }} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Task"><Edit className="w-4 h-4" /></button>
+                            <button onClick={() => deleteTask(task.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors" title="Delete Task"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         )}
 
@@ -385,7 +395,7 @@ const ProjectDetail = () => {
                       </div>
                     </div>
 
-                    {tComments.length > 0 && (
+                    {canViewFeedback && tComments.length > 0 && (
                       <div className="p-4 bg-white border-t border-gray-50 space-y-2">
                         {tComments.map(c => <div key={c.id} className="text-xs bg-blue-50 p-2 rounded-lg text-blue-900"><span className="font-bold">{getUserName(c.instructorId)}: </span> {c.text}</div>)}
                       </div>
@@ -402,15 +412,13 @@ const ProjectDetail = () => {
               })}
             </div>
 
-            {/* ONLY Creator can Add Tasks */}
             {isCreator && (
               <form onSubmit={handleAddTask} className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3 mt-6">
                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Create New Task</h4>
                 <input type="text" required placeholder="Short task description (1 line)..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" value={newTaskDesc} onChange={(e) => setNewTaskDesc(e.target.value)} />
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input type="date" required className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary text-gray-600" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} />
-                  
-                  {/* BP Projects cannot have collaborators, so we hide the assignee dropdown */}
+
                   {course?.code !== 'BP' ? (
                     <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-primary" value={newTaskAssignee} onChange={(e) => setNewTaskAssignee(e.target.value)}>
                       <option value="" disabled>Assign to...</option>
@@ -428,78 +436,82 @@ const ProjectDetail = () => {
             )}
           </div>
 
-          {/* GENERAL PROJECT FEEDBACK */}
-          <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-4">Instructor Feedback</h3>
-            <div className="space-y-4 mb-4">
-              {projComments.length === 0 ? <p className="text-sm text-gray-500">No feedback provided yet.</p> : null}
-              {projComments.map(c => <div key={c.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100"><p className="text-sm font-bold text-primary mb-1">{getUserName(c.instructorId)} <span className="text-xs font-normal text-gray-400 ml-2">{c.date}</span></p><p className="text-sm text-gray-600">{c.text}</p></div>)}
+          {canViewFeedback && (
+            <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="text-lg font-bold text-primary mb-4">Instructor Feedback</h3>
+              <div className="space-y-4 mb-4">
+                {projComments.length === 0 ? <p className="text-sm text-gray-500">No feedback provided yet.</p> : null}
+                {projComments.map(c => (
+                  <div key={c.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm font-bold text-primary">
+                        {getUserName(c.instructorId)} <span className="text-xs font-normal text-gray-400 ml-2">{c.date}</span>
+                      </p>
+
+                      {c.instructorId === currentUser?.id && (
+                        <div className="flex gap-1">
+                          <button onClick={() => { setEditingProjCommentId(c.id); setEditProjCommentText(c.text); }} className="text-blue-500 hover:text-blue-700 p-1" title="Edit">
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => { if (window.confirm("Delete this feedback?")) deleteProjectComment(c.id); }} className="text-red-500 hover:text-red-700 p-1" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {editingProjCommentId === c.id ? (
+                      <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                        <input type="text" className="flex-1 px-3 py-1 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 text-sm outline-none" value={editProjCommentText} onChange={e => setEditProjCommentText(e.target.value)} autoFocus />
+                        <div className="flex gap-2">
+                          <button onClick={() => setEditingProjCommentId(null)} className="px-3 py-1 bg-white border border-gray-300 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-50">Cancel</button>
+                          <button onClick={() => handleSaveEditProjComment(c.id)} className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700">Save</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600">{c.text}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {isCourseInstructor && (
+                <div className="mt-6 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-gray-700">Leave a Review</h4>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500 mr-2">Your Rating:</span>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => rateProject(project.id, currentUser.id, star)}
+                          className={`${star <= myRating ? 'text-yellow-500' : 'text-gray-300'} hover:scale-110 transition-transform`}
+                        >
+                          <Star className={`w-5 h-5 ${star <= myRating ? 'fill-current' : ''}`} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleAddProjComment}>
+                    <textarea rows="3" placeholder="Write overall project feedback..." className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm mb-2" value={newProjComment} onChange={(e) => setNewProjComment(e.target.value)}></textarea>
+                    <button type="submit" className="bg-primary text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800 transition-colors">Post Feedback</button>
+                  </form>
+                </div>
+              )}
             </div>
-            {isCourseInstructor && (
-              <form onSubmit={handleAddProjComment} className="mt-4">
-                <textarea rows="3" placeholder="Write overall project feedback..." className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm mb-2" value={newProjComment} onChange={(e) => setNewProjComment(e.target.value)}></textarea>
-                <button type="submit" className="bg-primary text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800 transition-colors">Post Feedback</button>
-              </form>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Sidebar: Details & Manage Team */}
         <div className="space-y-6">
           <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-lg font-bold text-primary mb-4">Project Details</h3>
-            
             <div className="space-y-6">
-              {/* GitHub Repository Link */}
-              {project.githubLink && (
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                    Repository
-                  </p>
-                  <a 
-                    href={project.githubLink} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="flex items-center justify-center gap-2 bg-gray-900 text-white w-full py-2.5 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
-                  >
-                    <Code className="w-4 h-4" /> View Source Code
-                  </a>
-                </div>
-              )}
-              
-              {/* Live Preview Video Link */}
-              {project.demoVideo && (
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                    Live Preview
-                  </p>
-                  <a 
-                    href={project.demoVideo} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-100 w-full py-2.5 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors shadow-sm"
-                  >
-                    <PlaySquare className="w-4 h-4" /> Watch Demo Video
-                  </a>
-                </div>
-              )}
-              
-              {/* Languages Used */}
-              <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                  Languages Used
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {project.languages?.map(lang => (
-                    <span 
-                      key={lang} 
-                      className="px-3 py-1 bg-blue-50 text-blue-700 font-medium rounded-lg text-xs"
-                    >
-                      {lang}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              {project.githubLink && (<div><p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Repository</p><a href={project.githubLink} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-gray-900 text-white w-full py-2.5 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"><Code className="w-4 h-4" /> View Source Code</a></div>)}
+              {project.demoVideo && (<div><p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Live Preview</p><a href={project.demoVideo} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-100 w-full py-2.5 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors shadow-sm"><PlaySquare className="w-4 h-4" /> Watch Demo Video</a></div>)}
+              <div><p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Languages Used</p><div className="flex flex-wrap gap-2">{project.languages?.map(lang => <span key={lang} className="px-3 py-1 bg-blue-50 text-blue-700 font-medium rounded-lg text-xs">{lang}</span>)}</div></div>
             </div>
           </div>
 
@@ -509,7 +521,7 @@ const ProjectDetail = () => {
               <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden"><img src={users.find(u => u.id === project.creatorId)?.profilePic} alt="Creator" /></div><div><p className="text-sm font-bold text-primary">{users.find(u => u.id === project.creatorId)?.firstName}</p><p className="text-xs text-gray-500">Creator</p></div></div>
               </div>
-              {invitations.filter(inv => inv.projectId === project.id).map(inv => {
+              {invitations.filter(inv => inv.projectId === project.id && inv.status !== 'info').map(inv => {
                 const receiver = users.find(u => u.id === inv.receiverId);
                 return (
                   <div key={inv.id} className="flex items-center justify-between p-2 border border-gray-100 rounded-lg">
@@ -546,7 +558,7 @@ const ProjectDetail = () => {
       {viewingPdf && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-2xl p-4 w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold flex items-center"><FileText className="w-5 h-5 mr-2 text-blue-600"/> Document Viewer</h3><button onClick={() => setViewingPdf(null)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-colors"><X className="w-5 h-5"/></button></div>
+            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold flex items-center"><FileText className="w-5 h-5 mr-2 text-blue-600" /> Document Viewer</h3><button onClick={() => setViewingPdf(null)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-colors"><X className="w-5 h-5" /></button></div>
             <object data={viewingPdf} type="application/pdf" className="w-full flex-1 border border-gray-200 rounded-lg bg-gray-50"><div className="flex items-center justify-center h-full text-gray-500 flex-col"><AlertTriangle className="w-8 h-8 mb-2" /><p>Your browser does not support viewing PDFs directly.</p><a href={viewingPdf} download className="text-blue-500 hover:underline mt-2">Click here to download it instead.</a></div></object>
           </div>
         </div>

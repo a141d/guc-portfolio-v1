@@ -14,6 +14,7 @@ const PortfolioDetail = () => {
   const isOwnProfile = currentUser?.id === profileUser?.id;
 
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(''); // <-- FIX: State added here!
   
   const [editForm, setEditForm] = useState({
     major: profileUser?.major || '',
@@ -45,7 +46,6 @@ const PortfolioDetail = () => {
     setIsEditing(false);
   };
 
-  // Helper to handle the fake image upload
   const handleImageUpload = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const fileUrl = URL.createObjectURL(e.target.files[0]);
@@ -110,7 +110,6 @@ const PortfolioDetail = () => {
               <h3 className="text-lg font-bold text-primary mb-4">Edit Profile Information</h3>
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 
-                {/* NEW REQ 12: Profile Picture / Company Logo Upload */}
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
                   <img src={editForm.profilePic} alt="Preview" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
                   <div className="flex-1">
@@ -181,7 +180,6 @@ const PortfolioDetail = () => {
             <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
               <h3 className="text-lg font-bold text-primary mb-4 flex items-center"><MapPin className="w-5 h-5 mr-2 text-red-500" /> Location</h3>
               <p className="text-sm text-gray-600 mb-4">{profileUser.address}</p>
-              {/* Simulated Google Map Req 11 */}
               <div className="w-full h-48 bg-gray-200 rounded-xl overflow-hidden relative">
                 <iframe title="map" width="100%" height="100%" frameBorder="0" src={`https://maps.google.com/maps?q=${encodeURIComponent(profileUser.address)}&t=&z=13&ie=UTF8&iwloc=&output=embed`}></iframe>
               </div>
@@ -212,13 +210,27 @@ const PortfolioDetail = () => {
                 <div className="pt-4 border-t border-gray-100">
                   <p className="text-sm font-bold mb-2">Request Link to Course</p>
                   <div className="flex gap-2">
-                    <select className="flex-1 text-sm border rounded-lg px-3 py-2 bg-white">
+                    <select 
+                      className="flex-1 text-sm border rounded-lg px-3 py-2 bg-white" 
+                      value={selectedCourse} 
+                      onChange={(e) => setSelectedCourse(e.target.value)}
+                    >
                       <option value="">Select a course...</option>
                       {courses.filter(c => !profileUser.linkedCourses?.includes(c.code)).map(c => (
                         <option key={c.id} value={c.code}>{c.code} - {c.name}</option>
                       ))}
                     </select>
-                    <button onClick={() => sendCourseRequest(currentUser.id, selectedCourse, 'link')} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100">
+                    <button 
+                      onClick={() => {
+                        if(selectedCourse) {
+                          sendCourseRequest(currentUser.id, selectedCourse, 'link');
+                          setSelectedCourse(''); // Reset the dropdown after clicking!
+                        } else {
+                          alert("Please select a course first.");
+                        }
+                      }} 
+                      className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100"
+                    >
                       Send Request
                     </button>
                   </div>

@@ -1,32 +1,40 @@
 // src/pages/Portfolio/PortfolioList.jsx
 import { useState } from 'react';
 import { useData } from '../../context/DataContext';
-import { Search, Filter, ArrowRight, BookOpen } from 'lucide-react';
+import { Search, Filter, ArrowRight, BookOpen, ArrowUpDown, Folder } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const PortfolioList = () => {
   const { users, projects, courses } = useData();
   
-  // State for toggling between Students and Instructors
-  const [activeTab, setActiveTab] = useState('Student'); // 'Student' or 'Course Instructor'
-  
+  // --- STATES ---
+  const [activeTab, setActiveTab] = useState('Student'); 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterOption, setFilterOption] = useState(''); // Stores Major OR Course Code
+  const [filterOption, setFilterOption] = useState(''); 
+  const [sortOption, setSortOption] = useState('most-projects'); 
 
-  // Handle Tab Switch (reset filters)
+  // Handle Tab Switch
   const handleTabSwitch = (tab) => {
     setActiveTab(tab);
     setSearchQuery('');
     setFilterOption('');
+    setSortOption(tab === 'Student' ? 'most-projects' : 'name-asc'); 
   };
 
-  // Extract users based on active tab
   const displayUsers = users.filter(u => u.role === activeTab);
 
-  // Filter logic (Req 47 & 48 for Students, Req 8 for Instructors)
+  const getProjectCount = (userId) => {
+    return projects.filter(p => p.creatorId === userId && p.visibility === 'public' && p.status !== 'deactivated').length;
+  };
+
+  // --- REQ 47 & 48: FILTER LOGIC ---
   const filteredUsers = displayUsers.filter(user => {
     const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-    const matchesSearch = fullName.includes(searchQuery.toLowerCase());
+    const email = user.email?.toLowerCase() || ''; 
+    const query = searchQuery.toLowerCase();
+    
+    const hasSkillMatch = user.skills?.some(skill => skill.toLowerCase().includes(query));
+    const matchesSearch = fullName.includes(query) || email.includes(query) || (activeTab === 'Student' && hasSkillMatch);
     
     let matchesFilter = true;
     if (filterOption) {
@@ -40,10 +48,19 @@ const PortfolioList = () => {
     return matchesSearch && matchesFilter;
   });
 
-  const getProjectCount = (userId) => {
-    // FIX: Only count projects that are set to 'public'!
-    return projects.filter(p => p.creatorId === userId && p.visibility === 'public').length;
-  };
+  // --- REQ 50: PRE-CALCULATE AND SORT ---
+  const enhancedUsers = filteredUsers.map(user => ({
+    ...user,
+    projectCount: activeTab === 'Student' ? getProjectCount(user.id) : 0
+  }));
+
+  const sortedUsers = [...enhancedUsers].sort((a, b) => {
+    if (sortOption === 'most-projects') return b.projectCount - a.projectCount;
+    if (sortOption === 'fewest-projects') return a.projectCount - b.projectCount;
+    if (sortOption === 'name-asc') return a.firstName.localeCompare(b.firstName);
+    if (sortOption === 'name-desc') return b.firstName.localeCompare(a.firstName);
+    return 0;
+  });
 
   return (
     <div className="space-y-6">
@@ -67,19 +84,21 @@ const PortfolioList = () => {
         </div>
       </div>
 
-      {/* Top Search and Filter Bar */}
-      <div className="bg-surface p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
+      {/* Top Search, Filter, and Sort Bar */}
+      <div className="bg-surface p-4 rounded-2xl shadow-sm border border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        
+        <div className="relative">
           <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
           <input 
             type="text" 
-            placeholder={`Search ${activeTab === 'Student' ? 'students' : 'instructors'} by name...`}
+            placeholder={activeTab === 'Student' ? "Search by name, email, or skill..." : "Search by name or email..."}
             className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="relative w-full md:w-64">
+
+        <div className="relative">
           <Filter className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
           <select 
             className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white appearance-none cursor-pointer"
@@ -101,29 +120,56 @@ const PortfolioList = () => {
             )}
           </select>
         </div>
+
+        {/* Sorting Dropdown */}
+        <div className="relative">
+          <ArrowUpDown className="w-5 h-5 text-blue-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
+          <select 
+            className="pl-10 pr-4 py-2 w-full border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-blue-50 text-blue-800 font-medium appearance-none cursor-pointer"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+          >
+            {activeTab === 'Student' && (
+              <>
+                <option value="most-projects">Sort: Most Projects</option>
+                <option value="fewest-projects">Sort: Fewest Projects</option>
+              </>
+            )}
+            <option value="name-asc">Sort: Name (A to Z)</option>
+            <option value="name-desc">Sort: Name (Z to A)</option>
+          </select>
+        </div>
       </div>
 
       {/* Directory Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredUsers.map(user => (
-          <div key={user.id} className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all flex flex-col items-center text-center">
+        {sortedUsers.map(user => (
+          /* Card is a standard DIV now */
+          <div 
+            key={user.id} 
+            className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all flex flex-col items-center text-center relative"
+          >
             <img src={user.profilePic} alt="Profile" className="w-20 h-20 rounded-full mb-4 border-2 border-gray-50 shadow-sm object-cover" />
-            <h3 className="text-lg font-bold text-primary">{user.firstName} {user.lastName}</h3>
+            
+            {/* REQ 51 FIXED: Only the Name is the clickable link! */}
+            <Link to={`/portfolios/${user.id}`}>
+              <h3 className="text-lg font-bold text-primary hover:text-blue-600 hover:underline transition-colors">
+                {user.firstName} {user.lastName}
+              </h3>
+            </Link>
             
             {activeTab === 'Student' ? (
-              <p className="text-sm text-gray-500 mb-2">{user.major || 'No Major Set'}</p>
+              <p className="text-sm text-gray-500 mb-2 mt-1">{user.major || 'No Major Set'}</p>
             ) : (
-              <p className="text-sm text-blue-600 mb-2 font-medium">Instructor</p>
+              <p className="text-sm text-purple-600 mb-2 mt-1 font-medium">Instructor</p>
             )}
             
             <div className="flex gap-2 mb-4 justify-center flex-wrap h-14 overflow-hidden">
               {activeTab === 'Student' ? (
-                // Show Student Skills
                 user.skills?.slice(0, 3).map(skill => (
                   <span key={skill} className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md text-xs border border-gray-200">{skill}</span>
                 ))
               ) : (
-                // Show Instructor Linked Courses
                 user.linkedCourses?.map(course => (
                   <span key={course} className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-bold flex items-center">
                     <BookOpen className="w-3 h-3 mr-1" /> {course}
@@ -134,19 +180,31 @@ const PortfolioList = () => {
 
             <div className="mt-auto w-full pt-4 border-t border-gray-100 flex items-center justify-between">
               {activeTab === 'Student' ? (
-                <span className="text-sm text-gray-500 font-medium">{getProjectCount(user.id)} Projects</span>
+                <span className="flex items-center text-sm text-gray-500 font-medium">
+                  <Folder className="w-4 h-4 mr-1.5 text-blue-500" />
+                  {user.projectCount} Public Projects
+                </span>
               ) : (
-                <span className="text-sm text-gray-500 font-medium">View Details</span>
+                <span className="text-sm text-gray-500 font-medium">View Teaching Profile</span>
               )}
               
-              <Link to={`/portfolios/${user.id}`} className="flex items-center text-sm font-medium text-primary hover:text-green-600 transition-colors">
-                View Profile <ArrowRight className="w-4 h-4 ml-1" />
+              {/* Added a small view button at the bottom as a secondary click target */}
+              <Link to={`/portfolios/${user.id}`} className="flex items-center text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-colors">
+                View <ArrowRight className="w-4 h-4 ml-1" />
               </Link>
             </div>
           </div>
         ))}
-        {filteredUsers.length === 0 && (
-          <div className="col-span-full py-12 text-center text-gray-500">No {activeTab === 'Student' ? 'students' : 'instructors'} found matching your search.</div>
+        {sortedUsers.length === 0 && (
+          <div className="col-span-full py-12 text-center text-gray-500">
+            No {activeTab === 'Student' ? 'students' : 'instructors'} found matching your search.
+            <button 
+              onClick={() => { setSearchQuery(''); setFilterOption(''); }} 
+              className="block mx-auto mt-2 text-sm text-blue-600 hover:underline font-bold"
+            >
+              Clear all filters
+            </button>
+          </div>
         )}
       </div>
     </div>
