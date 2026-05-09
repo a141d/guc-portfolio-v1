@@ -32,6 +32,7 @@ const Notifications = () => {
               const project = !isCourseReq ? getProject(notif.projectId) : null;
 
               // REQ 41: Dynamic Text based on Notification Type
+              // REQ 41 & 60: Dynamic Text based on Notification Type
               let messageText = null;
               if (notif.type === 'course_request') {
                 messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> requested to <span className="font-bold text-primary uppercase">{notif.actionType}</span> the course <span className="font-bold">{notif.courseCode}</span>.</>;
@@ -39,6 +40,8 @@ const Notifications = () => {
                 messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> left new instructor feedback on your project <span className="font-bold text-primary">{project?.title}</span>.</>;
               } else if (notif.type === 'feedback_task') {
                 messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> left feedback on a task assigned to you in <span className="font-bold text-primary">{project?.title}</span>.</>;
+              } else if (notif.type === 'project_flagged') {
+                messageText = <><span className="font-bold text-red-600">ACTION REQUIRED:</span> Your project <span className="font-bold text-primary">{project?.title}</span> has been flagged and deactivated. Reason: {project?.flagReason}</>;
               } else {
                 messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> invited you to collaborate on <span className="font-bold text-primary">{project?.title}</span>.</>;
               }

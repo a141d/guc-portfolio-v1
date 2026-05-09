@@ -3,24 +3,23 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, MessageSquare, Star, AlertTriangle, Folder, PlaySquare, Code, Edit, Trash2, Eye, FileText, X, Search, CheckSquare, ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Star, Folder, PlaySquare, Code, Edit, Trash2, Eye, FileText, X, Search, CheckSquare, ChevronUp, ChevronDown, User, Calendar, AlertTriangle, Flag, CheckCircle2 } from 'lucide-react';
 
 const ProjectDetail = () => {
-  // --- 1. HOOKS & CONTEXT ---
   const { id } = useParams();
   const navigate = useNavigate();
   const {
     projects, courses, tasks, addTask, updateTask, deleteTask, users,
     updateProject, deleteProject, rateProject, projectComments, addProjectComment, updateProjectComment, deleteProjectComment, taskComments, addTaskComment,
     invitations, sendInvitation, deleteInvitation,
-    thesisDrafts, uploadThesisDraft, setFinalDraft, showToast 
+    thesisDrafts, uploadThesisDraft, setFinalDraft, showToast, flagProject, submitAppeal
   } = useData();
   const { currentUser } = useAuth();
 
   const project = projects.find(p => p.id === id);
   const course = courses.find(c => c.id === project?.courseId);
 
-  // --- 2. COMPONENT STATE (Must be declared before we use them!) ---
+  // States
   const [newProjComment, setNewProjComment] = useState('');
   const [newTaskCommentText, setNewTaskCommentText] = useState({});
   const [activeTaskComment, setActiveTaskComment] = useState(null);
@@ -30,11 +29,15 @@ const ProjectDetail = () => {
   const [newDraftFile, setNewDraftFile] = useState(null); 
   const [viewingPdf, setViewingPdf] = useState(null);
   const [inviteSearchQuery, setInviteSearchQuery] = useState('');
+  
+  // Task States
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskDeadline, setNewTaskDeadline] = useState(new Date().toLocaleDateString('en-CA'));
   const [newTaskAssignee, setNewTaskAssignee] = useState(project?.creatorId || '');
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editTaskData, setEditTaskData] = useState({});
+  
+  // Project Edit States
   const [isEditingProj, setIsEditingProj] = useState(false);
   const [projFormData, setProjFormData] = useState({
     title: project?.title || '', courseId: project?.courseId || '',
@@ -42,7 +45,12 @@ const ProjectDetail = () => {
     demoVideo: project?.demoVideo || '', visibility: project?.visibility || 'private'
   });
 
-  // --- 3. DERIVED DATA & AUTHORIZATION ---
+  // Flag & Appeal States (Req 59, 61)
+  const [showFlagModal, setShowFlagModal] = useState(false);
+  const [flagReasonText, setFlagReasonText] = useState('');
+  const [appealText, setAppealText] = useState('');
+
+  // Derived Data & Auth
   const ratings = project?.ratings || [];
   const totalRatings = ratings.length;
   const averageScore = totalRatings > 0 ? (ratings.reduce((sum, r) => sum + r.score, 0) / totalRatings).toFixed(1) : 0;
@@ -54,7 +62,7 @@ const ProjectDetail = () => {
   const canManageProject = isCreator || isAcceptedCollaborator;
   const canViewFeedback = canManageProject || isCourseInstructor || currentUser?.role === 'Administrator';
 
-  // --- 4. FILTERED LISTS ---
+  // Filtered Lists
   const projectTasks = tasks.filter(t => t.projectId === id).sort((a, b) => (a.order || 0) - (b.order || 0));
   const projComments = projectComments.filter(c => c.projectId === id);
   const projectDrafts = thesisDrafts?.filter(d => d.projectId === id) || [];
@@ -71,7 +79,6 @@ const ProjectDetail = () => {
     ...invitations.filter(inv => inv.projectId === id && inv.status === 'accepted').map(inv => users.find(u => u.id === inv.receiverId))
   ].filter(Boolean);
 
-  // Safely uses inviteSearchQuery because it was declared at the top!
   const availableUsersToInvite = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (u.role !== 'Student' && u.role !== 'Course Instructor') return false;
@@ -82,14 +89,13 @@ const ProjectDetail = () => {
     return false;
   });
 
-  // --- 5. EFFECTS ---
   useEffect(() => {
     if (project && !newTaskAssignee) setNewTaskAssignee(project.creatorId);
   }, [project]);
 
   if (!project) return <div className="p-8 text-center text-gray-500">Project not found.</div>;
 
-  // --- 6. HANDLERS ---
+  // Handlers
   const handleDraftUploadChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -144,11 +150,8 @@ const ProjectDetail = () => {
     if (!newTaskDesc.trim()) return;
     const finalAssignee = course?.code === 'BP' ? project.creatorId : (parseInt(newTaskAssignee) || project.creatorId);
     addTask({
-      projectId: project.id,
-      description: newTaskDesc,
-      assigneeId: finalAssignee,
-      status: 'pending',
-      deadline: newTaskDeadline,
+      projectId: project.id, description: newTaskDesc, assigneeId: finalAssignee,
+      status: 'pending', deadline: newTaskDeadline,
       order: projectTasks.length > 0 ? Math.max(...projectTasks.map(t => t.order || 0)) + 1 : 1
     });
     setNewTaskDesc('');
@@ -205,6 +208,22 @@ const ProjectDetail = () => {
     return u ? `${u.firstName} ${u.lastName}` : 'User';
   };
 
+  // Flag & Appeal Handlers
+  const handleFlagSubmit = (e) => {
+    e.preventDefault();
+    if (!flagReasonText.trim()) return;
+    flagProject(project.id, flagReasonText);
+    setShowFlagModal(false);
+    setFlagReasonText('');
+  };
+
+  const handleAppealSubmit = (e) => {
+    e.preventDefault();
+    if (!appealText.trim()) return;
+    submitAppeal(project.id, appealText);
+    if (showToast) showToast("Appeal submitted successfully!");
+  };
+
   return (
     <div className="space-y-6 relative">
       {/* Header */}
@@ -220,17 +239,24 @@ const ProjectDetail = () => {
             </div>
             <p className="text-gray-500 font-medium">{course?.name} • Created {project.creationDate}</p>
 
-            {isCreator && (
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => setIsEditingProj(true)} className="flex items-center text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"><Edit className="w-3.5 h-3.5 mr-1" /> Edit Project</button>
-                <button onClick={handleDeleteProject} className="flex items-center text-xs font-bold bg-red-50 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors"><Trash2 className="w-3.5 h-3.5 mr-1" /> Delete</button>
-              </div>
-            )}
+            <div className="flex gap-2 mt-4">
+              {isCreator && (
+                <>
+                  <button onClick={() => setIsEditingProj(true)} className="flex items-center text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"><Edit className="w-3.5 h-3.5 mr-1" /> Edit Project</button>
+                  <button onClick={handleDeleteProject} className="flex items-center text-xs font-bold bg-red-50 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors"><Trash2 className="w-3.5 h-3.5 mr-1" /> Delete</button>
+                </>
+              )}
+              {/* REQ 59: Flag Button for Admins/Instructors */}
+              {(currentUser?.role === 'Administrator' || currentUser?.role === 'Course Instructor') && !project.isFlagged && (
+                <button onClick={() => setShowFlagModal(true)} className="flex items-center text-xs font-bold bg-orange-50 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors">
+                  <Flag className="w-3.5 h-3.5 mr-1" /> Flag Project
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className={`px-3 py-1 rounded-full text-xs font-medium border uppercase ${project.visibility === 'public' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>{project.visibility}</span>
 
-            {/* REQ 39: Read-Only Global Average with Vector Fractional Stars */}
             <div className="flex items-center gap-1.5 mt-1 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
               <span className="text-sm font-bold text-gray-800">
                 {averageScore > 0 ? averageScore : '0.0'}
@@ -260,6 +286,23 @@ const ProjectDetail = () => {
         </div>
       </div>
 
+      {/* Flag Modal */}
+      {showFlagModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-lg">
+            <h3 className="text-xl font-bold mb-2 flex items-center text-red-600"><Flag className="w-5 h-5 mr-2"/> Flag Project</h3>
+            <p className="text-sm text-gray-500 mb-4">Flagging this project will automatically deactivate it. Please provide a reason (e.g., plagiarism).</p>
+            <form onSubmit={handleFlagSubmit} className="space-y-4">
+              <textarea rows="3" required placeholder="Reason for flagging..." className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-400" value={flagReasonText} onChange={e => setFlagReasonText(e.target.value)} />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setShowFlagModal(false)} className="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button type="submit" className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700">Submit Flag</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Edit Modal */}
       {isEditingProj && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -280,6 +323,26 @@ const ProjectDetail = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+
+          {/* REQ 61: APPEAL BANNER FOR STUDENT */}
+          {project.isFlagged && isCreator && (
+            <div className="bg-red-50 border border-red-200 p-5 rounded-2xl shadow-sm">
+              <h3 className="text-red-700 font-bold flex items-center text-lg"><AlertTriangle className="w-5 h-5 mr-2" /> Project Flagged & Deactivated</h3>
+              <p className="text-sm text-red-600 mt-1 mb-4"><strong>Reason:</strong> {project.flagReason}</p>
+              {!project.appealMessage ? (
+                <form onSubmit={handleAppealSubmit} className="flex flex-col sm:flex-row gap-2">
+                  <input type="text" placeholder="Write a short appeal message to explain your situation..." required className="flex-1 px-3 py-2 text-sm border border-red-200 rounded-lg outline-none focus:ring-2 focus:ring-red-400" value={appealText} onChange={e => setAppealText(e.target.value)} />
+                  <button type="submit" className="bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-red-700 whitespace-nowrap shadow-sm">Submit Appeal</button>
+                </form>
+              ) : (
+                <div className="bg-white p-3 rounded-lg border border-red-100">
+                  <p className="text-sm font-bold text-green-700 flex items-center"><CheckCircle2 className="w-4 h-4 mr-1"/> Appeal submitted!</p>
+                  <p className="text-xs text-gray-600 mt-1">"{project.appealMessage}"</p>
+                  <p className="text-xs text-gray-500 mt-1 italic">Awaiting administrator review.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* BACHELOR PROJECT THESIS DRAFTS */}
           {course?.code === 'BP' && (
@@ -313,7 +376,7 @@ const ProjectDetail = () => {
             </div>
           )}
 
-          {/* TASK LIST (REQ 32: CRUD & Permissions) */}
+          {/* TASK LIST */}
           <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-lg font-bold text-primary mb-6 flex items-center"><CheckSquare className="w-5 h-5 mr-2 text-blue-500" /> Task Management</h3>
 

@@ -40,7 +40,20 @@ export const initialUsers = [
     role: "Employer",
     status: "active",
     profilePic: "https://ui-avatars.com/api/?name=TechCorp"
+  },
+  {
+    id: 5,
+    firstName: "Sara",
+    lastName: "Collaborator",
+    email: "sara@student.guc.edu.eg",
+    password: "password123",
+    role: "Student",
+    major: "MET",
+    skills: ["React"],
+    profilePic: "https://i.pravatar.cc/150?img=1"
   }
+  
+
 ];
 
 export const initialCourses = [
@@ -79,8 +92,8 @@ export const initialInternships = [
 ];
 
 export const initialTasks = [
-  { id: "t1", projectId: "p1", description: "Design Figma wireframes", assigneeId: 1, status: "completed", deadline: "2026-03-12" },
-  { id: "t2", projectId: "p1", description: "Implement React Router", assigneeId: 1, status: "pending", deadline: "2026-04-10" }
+  { id: "t1", projectId: "p1", description: "Design Figma wireframes", assigneeId: 1, status: "completed", deadline: "2026-03-12", order: 1 },
+  { id: "t2", projectId: "p1", description: "Implement React Router", assigneeId: 1, status: "pending", deadline: "2026-04-10", order: 2 }
 ];
 
 export const initialApplications = [
@@ -96,7 +109,8 @@ export const initialTaskComments = [
 ];
 
 export const initialInvitations = [
-  { id: "inv1", projectId: "p1", senderId: 1, receiverId: 2, status: "pending", read: false }
+  { id: "inv1", projectId: "p1", senderId: 1, receiverId: 2, status: "pending", read: false },
+  { id: "inv2", projectId: "p1", senderId: 1, receiverId: 5, status: "accepted", read: true }
 ];
 
 // Add to the bottom of src/assets/dummyData.js
@@ -397,6 +411,8 @@ const CreateProjectForm = ({ onClose }) => {
 
 export default CreateProjectForm;
 
+
+
 // src/context/AuthContext.jsx
 import { createContext, useState, useContext } from 'react';
 import { useData } from './DataContext';
@@ -476,36 +492,63 @@ export const DataProvider = ({ children }) => {
   const addCourse = (code, name) => setCourses([...courses, { id: `c${courses.length + 1}`, code, name }]);
   const deleteCourse = (courseId) => setCourses(courses.filter(c => c.id !== courseId));
 
-  // --- PROJECTS (FIXED TIMEZONE, ADDED UPDATE & DELETE) ---
   const addProject = (p) => {
-    // toLocaleDateString('en-CA') forces local timezone YYYY-MM-DD format!
     const localDate = new Date().toLocaleDateString('en-CA'); 
-    setProjects([...projects, { ...p, id: `p${projects.length + 1}`, creationDate: localDate, status: 'active', rating: 0 }]);
+    setProjects([...projects, { ...p, id: `p${projects.length + 1}`, creationDate: localDate, status: 'active', rating: 0, ratings: [] }]);
   };
   const updateProject = (id, updatedData) => setProjects(projects.map(p => p.id === id ? { ...p, ...updatedData } : p));
   const deleteProject = (id) => setProjects(projects.filter(p => p.id !== id));
   
-  const rateProject = (id, r) => setProjects(projects.map(p => p.id === id ? { ...p, rating: r } : p));
+  // REQ 39: Average Rating Logic
+  const rateProject = (projectId, instructorId, score) => {
+    setProjects(projects.map(p => {
+      if (p.id === projectId) {
+        const currentRatings = p.ratings || [];
+        const updatedRatings = [
+          ...currentRatings.filter(r => r.instructorId !== instructorId),
+          { instructorId, score }
+        ];
+        const totalScore = updatedRatings.reduce((sum, r) => sum + r.score, 0);
+        const averageRating = totalScore / updatedRatings.length;
+        
+        return { ...p, ratings: updatedRatings, rating: Math.round(averageRating) };
+      }
+      return p;
+    }));
+  };
+
   const flagProject = (id, reason) => setProjects(projects.map(p => p.id === id ? { ...p, isFlagged: true, flagReason: reason } : p));
   const submitAppeal = (id, msg) => setProjects(projects.map(p => p.id === id ? { ...p, appealMessage: msg } : p));
   const resolveFlag = (id, deactivate) => setProjects(projects.map(p => p.id === id ? { ...p, isFlagged: false, status: deactivate ? 'deactivated' : 'active', flagReason: null, appealMessage: null } : p));
 
-  // Updated to accept and save the base64 fileData
   const uploadThesisDraft = (projectId, name, fileData) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setThesisDrafts([...thesisDrafts, { id: `d${Date.now()}`, projectId, name, fileData, date: localDate, isFinal: false }]);
   };
   const setFinalDraft = (projectId, draftId) => setThesisDrafts(thesisDrafts.map(d => d.projectId === projectId ? { ...d, isFinal: d.id === draftId } : d));
 
-// --- TASKS (Req 32) ---
   const addTask = (t) => setTasks([...tasks, { ...t, id: `t${Date.now()}` }]);
-  const updateTask = (id, updatedData) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updatedData } : t));
+  const updateTask = (id, updatedData) => setTasks(prevTasks => prevTasks.map(t => t.id === id ? { ...t, ...updatedData } : t));
   const deleteTask = (id) => setTasks(tasks.filter(t => t.id !== id));
-  // (We can leave toggleTaskStatus for legacy support, but we won't use it anymore)
   const toggleTaskStatus = (id) => setTasks(tasks.map(t => t.id === id ? { ...t, status: t.status === 'pending' ? 'completed' : 'pending' } : t));
   const addTaskComment = (c) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setTaskComments([...taskComments, { ...c, id: `tc${taskComments.length + 1}`, date: localDate }]);
+
+    // Find the task to see who it is assigned to
+    const task = tasks.find(t => t.id === c.taskId);
+    if (task) {
+      setInvitations(prev => [...prev, {
+        id: `notif${Date.now()}`,
+        type: 'feedback_task',
+        projectId: task.projectId,
+        taskId: task.id,
+        senderId: c.instructorId,
+        receiverId: task.assigneeId, // Notify the student assigned to the task
+        status: 'info',
+        read: false
+      }]);
+    }
   };
 
   const addInternship = (i) => {
@@ -517,25 +560,40 @@ export const DataProvider = ({ children }) => {
   const toggleInternshipStatus = (id) => setInternships(internships.map(i => i.id === id ? { ...i, status: i.status === 'hiring' ? 'filled' : 'hiring' } : i));
   const archiveInternship = (id) => setInternships(internships.map(i => i.id === id ? { ...i, isArchived: true } : i));
 
-  // --- Invites & Comments ---
   const sendInvitation = (pId, sId, rId) => {
-    // Check if an invite already exists for this person on this project
     const alreadyInvited = invitations.some(i => i.projectId === pId && i.receiverId === rId);
-    
     if (alreadyInvited) {
       if (showToast) showToast("This user has already been invited.", "error");
-      return; // Stop the duplicate!
+      return;
     }
-    
     setInvitations([...invitations, { id: `inv${Date.now()}`, projectId: pId, senderId: sId, receiverId: rId, status: 'pending', read: false }]);
     if (showToast) showToast("Invitation sent!");
   };
+  
   const updateInvitationStatus = (id, s) => setInvitations(invitations.map(i => i.id === id ? { ...i, status: s, read: true } : i));
   const deleteInvitation = (id) => setInvitations(invitations.filter(i => i.id !== id));
+  const toggleNotificationRead = (id) => setInvitations(invitations.map(i => i.id === id ? { ...i, read: !i.read } : i));
+
   const addProjectComment = (c) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setProjectComments([...projectComments, { ...c, id: `pc${projectComments.length + 1}`, date: localDate }]);
+
+    // Find the project to see who created it
+    const project = projects.find(p => p.id === c.projectId);
+    if (project) {
+      setInvitations(prev => [...prev, {
+        id: `notif${Date.now()}`,
+        type: 'feedback_project',
+        projectId: project.id,
+        senderId: c.instructorId,
+        receiverId: project.creatorId, // Notify the creator of the project
+        status: 'info',
+        read: false
+      }]);
+    }
   };
+  const updateProjectComment = (id, newText) => setProjectComments(projectComments.map(c => c.id === id ? { ...c, text: newText } : c));
+  const deleteProjectComment = (id) => setProjectComments(projectComments.filter(c => c.id !== id));
 
   const toggleFavorite = (userId, itemId, type) => {
     const existing = favorites.find(f => f.userId === userId && f.itemId === itemId);
@@ -549,6 +607,43 @@ export const DataProvider = ({ children }) => {
   };
   const markMessagesRead = (receiverId, senderId) => setMessages(messages.map(m => (m.receiverId === receiverId && m.senderId === senderId) ? { ...m, read: true } : m));
 
+  const sendCourseRequest = (senderId, courseCode, actionType) => {
+    const admin = users.find(u => u.role === 'Administrator');
+    if (!admin) return;
+
+    setInvitations(prev => [...prev, { 
+      id: `req${Date.now()}`, 
+      type: 'course_request', 
+      actionType, 
+      courseCode, 
+      senderId, 
+      receiverId: admin.id, 
+      status: 'pending', 
+      read: false 
+    }]);
+    if (showToast) showToast(`${actionType === 'link' ? 'Link' : 'Unlink'} request sent to Administrator!`);
+  };
+
+  const resolveCourseRequest = (reqId, newStatus) => {
+    const req = invitations.find(i => i.id === reqId);
+    if (!req) return;
+
+    setInvitations(invitations.map(i => i.id === reqId ? { ...i, status: newStatus, read: true } : i));
+
+    if (newStatus === 'accepted') {
+      const instructor = users.find(u => u.id === req.senderId);
+      if (instructor) {
+        let updatedCourses = instructor.linkedCourses || [];
+        if (req.actionType === 'link' && !updatedCourses.includes(req.courseCode)) {
+          updatedCourses = [...updatedCourses, req.courseCode];
+        } else if (req.actionType === 'unlink') {
+          updatedCourses = updatedCourses.filter(c => c !== req.courseCode);
+        }
+        updateUser(instructor.id, { linkedCourses: updatedCourses });
+      }
+    }
+  };
+
   return (
     <DataContext.Provider value={{ 
       users, addUser, updateUserStatus, updateUser, toggleUserActiveStatus, resetPassword,
@@ -556,13 +651,14 @@ export const DataProvider = ({ children }) => {
       projects, addProject, updateProject, deleteProject, rateProject, flagProject, submitAppeal, resolveFlag,
       thesisDrafts, uploadThesisDraft, setFinalDraft,
       internships, addInternship, toggleInternshipStatus, archiveInternship,
-      tasks, addTask, toggleTaskStatus,
+      tasks, addTask, toggleTaskStatus, updateTask, deleteTask,
       applications, addApplication, updateApplicationStatus,
-      projectComments, addProjectComment, taskComments, addTaskComment,
-      invitations, sendInvitation, updateInvitationStatus, deleteInvitation,
+      projectComments, addProjectComment, updateProjectComment, deleteProjectComment, taskComments, addTaskComment,
+      invitations, sendInvitation, updateInvitationStatus, deleteInvitation, toggleNotificationRead,
+      sendCourseRequest, resolveCourseRequest,
       favorites, toggleFavorite, 
       messages, sendMessage, markMessagesRead,
-      toast, showToast, tasks, addTask, toggleTaskStatus, updateTask, deleteTask
+      toast, showToast
     }}>
       {children}
     </DataContext.Provider>
@@ -1520,10 +1616,10 @@ export default Messages;
 // src/pages/Dashboard/Notifications.jsx
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { Bell, Check, X, MailOpen } from 'lucide-react';
+import { Bell, Check, X, MailOpen, Mail, MessageSquare } from 'lucide-react';
 
 const Notifications = () => {
-  const { invitations, projects, users, updateInvitationStatus, markNotificationRead } = useData();
+  const { invitations, projects, users, updateInvitationStatus, toggleNotificationRead, resolveCourseRequest } = useData();
   const { currentUser } = useAuth();
 
   // Get notifications/invites sent TO the current user
@@ -1536,7 +1632,7 @@ const Notifications = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-primary flex items-center">
-          <Bell className="w-6 h-6 mr-2" /> Notifications & Invites
+          <Bell className="w-6 h-6 mr-2" /> Notifications
         </h2>
       </div>
 
@@ -1546,36 +1642,69 @@ const Notifications = () => {
         ) : (
           <div className="space-y-4">
             {myNotifications.map(notif => {
-              const project = getProject(notif.projectId);
               const sender = getSender(notif.senderId);
+              const isCourseReq = notif.type === 'course_request';
+              const project = !isCourseReq ? getProject(notif.projectId) : null;
+
+              // REQ 41: Dynamic Text based on Notification Type
+              let messageText = null;
+              if (notif.type === 'course_request') {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> requested to <span className="font-bold text-primary uppercase">{notif.actionType}</span> the course <span className="font-bold">{notif.courseCode}</span>.</>;
+              } else if (notif.type === 'feedback_project') {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> left new instructor feedback on your project <span className="font-bold text-primary">{project?.title}</span>.</>;
+              } else if (notif.type === 'feedback_task') {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> left feedback on a task assigned to you in <span className="font-bold text-primary">{project?.title}</span>.</>;
+              } else {
+                messageText = <><span className="font-bold">{sender?.firstName} {sender?.lastName}</span> invited you to collaborate on <span className="font-bold text-primary">{project?.title}</span>.</>;
+              }
 
               return (
                 <div key={notif.id} className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${notif.read ? 'bg-white border-gray-100' : 'bg-blue-50 border-blue-100'}`}>
-                  <div>
-                    <p className="text-sm text-gray-800">
-                      <span className="font-bold">{sender?.firstName} {sender?.lastName}</span> invited you to collaborate on <span className="font-bold text-primary">{project?.title}</span>.
-                    </p>
-                    <span className={`text-xs font-bold px-2 py-1 rounded-md mt-2 inline-block
-                      ${notif.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}
-                      ${notif.status === 'accepted' ? 'bg-green-100 text-green-700' : ''}
-                      ${notif.status === 'rejected' ? 'bg-red-100 text-red-700' : ''}
-                    `}>
-                      Status: {notif.status.charAt(0).toUpperCase() + notif.status.slice(1)}
-                    </span>
+                  <div className="flex items-start gap-3">
+                    
+                    {/* Visual icon indicator depending on type */}
+                    <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${notif.type?.includes('feedback') ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                      {notif.type?.includes('feedback') ? <MessageSquare className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-800">{messageText}</p>
+                      
+                      {/* Hide the status pill if it's just an 'info' notification like feedback */}
+                      {notif.status !== 'info' && (
+                        <span className={`text-xs font-bold px-2 py-1 rounded-md mt-2 inline-block
+                          ${notif.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : ''}
+                          ${notif.status === 'accepted' ? 'bg-green-100 text-green-700' : ''}
+                          ${notif.status === 'rejected' ? 'bg-red-100 text-red-700' : ''}
+                        `}>
+                          Status: {notif.status.charAt(0).toUpperCase() + notif.status.slice(1)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {!notif.read && (
-                       <button onClick={() => markNotificationRead(notif.id)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="Mark as read">
-                         <MailOpen className="w-5 h-5" />
-                       </button>
-                    )}
-                    {notif.status === 'pending' && (
+                    <button 
+                      onClick={() => toggleNotificationRead(notif.id)} 
+                      className={`p-2 transition-colors ${notif.read ? 'text-gray-400 hover:text-gray-600' : 'text-blue-500 hover:text-blue-700'}`} 
+                      title={notif.read ? "Mark as unread" : "Mark as read"}
+                    >
+                      {notif.read ? <Mail className="w-5 h-5" /> : <MailOpen className="w-5 h-5" />}
+                    </button>
+                    
+                    {/* Only show Accept/Reject for actual pending invitations/requests */}
+                    {notif.status === 'pending' && !notif.type?.includes('feedback') && (
                       <>
-                        <button onClick={() => updateInvitationStatus(notif.id, 'accepted')} className="flex items-center bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors">
+                        <button 
+                          onClick={() => isCourseReq ? resolveCourseRequest(notif.id, 'accepted') : updateInvitationStatus(notif.id, 'accepted')} 
+                          className="flex items-center bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors"
+                        >
                           <Check className="w-4 h-4 mr-1" /> Accept
                         </button>
-                        <button onClick={() => updateInvitationStatus(notif.id, 'rejected')} className="flex items-center bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors">
+                        <button 
+                          onClick={() => isCourseReq ? resolveCourseRequest(notif.id, 'rejected') : updateInvitationStatus(notif.id, 'rejected')} 
+                          className="flex items-center bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
+                        >
                           <X className="w-4 h-4 mr-1" /> Reject
                         </button>
                       </>
@@ -1873,13 +2002,14 @@ import { ArrowLeft, Edit3, Code, Globe, Mail, Folder, MapPin } from 'lucide-reac
 
 const PortfolioDetail = () => {
   const { id } = useParams();
-  const { users, projects, courses, updateUser, invitations } = useData();
+  const { users, projects, courses, updateUser, invitations, sendCourseRequest } = useData();
   const { currentUser } = useAuth();
 
   const profileUser = users.find(u => u.id === parseInt(id));
   const isOwnProfile = currentUser?.id === profileUser?.id;
 
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(''); // <-- FIX: State added here!
   
   const [editForm, setEditForm] = useState({
     major: profileUser?.major || '',
@@ -1911,7 +2041,6 @@ const PortfolioDetail = () => {
     setIsEditing(false);
   };
 
-  // Helper to handle the fake image upload
   const handleImageUpload = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const fileUrl = URL.createObjectURL(e.target.files[0]);
@@ -1976,7 +2105,6 @@ const PortfolioDetail = () => {
               <h3 className="text-lg font-bold text-primary mb-4">Edit Profile Information</h3>
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 
-                {/* NEW REQ 12: Profile Picture / Company Logo Upload */}
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
                   <img src={editForm.profilePic} alt="Preview" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
                   <div className="flex-1">
@@ -2047,7 +2175,6 @@ const PortfolioDetail = () => {
             <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
               <h3 className="text-lg font-bold text-primary mb-4 flex items-center"><MapPin className="w-5 h-5 mr-2 text-red-500" /> Location</h3>
               <p className="text-sm text-gray-600 mb-4">{profileUser.address}</p>
-              {/* Simulated Google Map Req 11 */}
               <div className="w-full h-48 bg-gray-200 rounded-xl overflow-hidden relative">
                 <iframe title="map" width="100%" height="100%" frameBorder="0" src={`https://maps.google.com/maps?q=${encodeURIComponent(profileUser.address)}&t=&z=13&ie=UTF8&iwloc=&output=embed`}></iframe>
               </div>
@@ -2063,7 +2190,7 @@ const PortfolioDetail = () => {
                   <div key={courseCode} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-100 rounded-lg">
                     <span className="font-bold text-sm text-primary">{courseCode}</span>
                     {isOwnProfile && courseCode !== 'BP' && (
-                      <button onClick={() => alert("Unlink request sent to Administrator.")} className="text-xs text-red-500 hover:underline">
+                      <button onClick={() => sendCourseRequest(currentUser.id, courseCode, 'unlink')} className="text-xs text-red-500 hover:underline">
                         Request Unlink
                       </button>
                     )}
@@ -2078,13 +2205,27 @@ const PortfolioDetail = () => {
                 <div className="pt-4 border-t border-gray-100">
                   <p className="text-sm font-bold mb-2">Request Link to Course</p>
                   <div className="flex gap-2">
-                    <select className="flex-1 text-sm border rounded-lg px-3 py-2 bg-white">
+                    <select 
+                      className="flex-1 text-sm border rounded-lg px-3 py-2 bg-white" 
+                      value={selectedCourse} 
+                      onChange={(e) => setSelectedCourse(e.target.value)}
+                    >
                       <option value="">Select a course...</option>
                       {courses.filter(c => !profileUser.linkedCourses?.includes(c.code)).map(c => (
                         <option key={c.id} value={c.code}>{c.code} - {c.name}</option>
                       ))}
                     </select>
-                    <button onClick={() => alert("Link request sent to Administrator.")} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100">
+                    <button 
+                      onClick={() => {
+                        if(selectedCourse) {
+                          sendCourseRequest(currentUser.id, selectedCourse, 'link');
+                          setSelectedCourse(''); // Reset the dropdown after clicking!
+                        } else {
+                          alert("Please select a course first.");
+                        }
+                      }} 
+                      className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100"
+                    >
                       Send Request
                     </button>
                   </div>
@@ -2132,32 +2273,40 @@ export default PortfolioDetail;
 // src/pages/Portfolio/PortfolioList.jsx
 import { useState } from 'react';
 import { useData } from '../../context/DataContext';
-import { Search, Filter, ArrowRight, BookOpen } from 'lucide-react';
+import { Search, Filter, ArrowRight, BookOpen, ArrowUpDown, Folder } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const PortfolioList = () => {
   const { users, projects, courses } = useData();
   
-  // State for toggling between Students and Instructors
-  const [activeTab, setActiveTab] = useState('Student'); // 'Student' or 'Course Instructor'
-  
+  // --- STATES ---
+  const [activeTab, setActiveTab] = useState('Student'); 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterOption, setFilterOption] = useState(''); // Stores Major OR Course Code
+  const [filterOption, setFilterOption] = useState(''); 
+  const [sortOption, setSortOption] = useState('most-projects'); 
 
-  // Handle Tab Switch (reset filters)
+  // Handle Tab Switch
   const handleTabSwitch = (tab) => {
     setActiveTab(tab);
     setSearchQuery('');
     setFilterOption('');
+    setSortOption(tab === 'Student' ? 'most-projects' : 'name-asc'); 
   };
 
-  // Extract users based on active tab
   const displayUsers = users.filter(u => u.role === activeTab);
 
-  // Filter logic (Req 47 & 48 for Students, Req 8 for Instructors)
+  const getProjectCount = (userId) => {
+    return projects.filter(p => p.creatorId === userId && p.visibility === 'public' && p.status !== 'deactivated').length;
+  };
+
+  // --- REQ 47 & 48: FILTER LOGIC ---
   const filteredUsers = displayUsers.filter(user => {
     const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-    const matchesSearch = fullName.includes(searchQuery.toLowerCase());
+    const email = user.email?.toLowerCase() || ''; 
+    const query = searchQuery.toLowerCase();
+    
+    const hasSkillMatch = user.skills?.some(skill => skill.toLowerCase().includes(query));
+    const matchesSearch = fullName.includes(query) || email.includes(query) || (activeTab === 'Student' && hasSkillMatch);
     
     let matchesFilter = true;
     if (filterOption) {
@@ -2171,10 +2320,19 @@ const PortfolioList = () => {
     return matchesSearch && matchesFilter;
   });
 
-  const getProjectCount = (userId) => {
-    // FIX: Only count projects that are set to 'public'!
-    return projects.filter(p => p.creatorId === userId && p.visibility === 'public').length;
-  };
+  // --- REQ 50: PRE-CALCULATE AND SORT ---
+  const enhancedUsers = filteredUsers.map(user => ({
+    ...user,
+    projectCount: activeTab === 'Student' ? getProjectCount(user.id) : 0
+  }));
+
+  const sortedUsers = [...enhancedUsers].sort((a, b) => {
+    if (sortOption === 'most-projects') return b.projectCount - a.projectCount;
+    if (sortOption === 'fewest-projects') return a.projectCount - b.projectCount;
+    if (sortOption === 'name-asc') return a.firstName.localeCompare(b.firstName);
+    if (sortOption === 'name-desc') return b.firstName.localeCompare(a.firstName);
+    return 0;
+  });
 
   return (
     <div className="space-y-6">
@@ -2198,19 +2356,21 @@ const PortfolioList = () => {
         </div>
       </div>
 
-      {/* Top Search and Filter Bar */}
-      <div className="bg-surface p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
+      {/* Top Search, Filter, and Sort Bar */}
+      <div className="bg-surface p-4 rounded-2xl shadow-sm border border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        
+        <div className="relative">
           <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
           <input 
             type="text" 
-            placeholder={`Search ${activeTab === 'Student' ? 'students' : 'instructors'} by name...`}
+            placeholder={activeTab === 'Student' ? "Search by name, email, or skill..." : "Search by name or email..."}
             className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="relative w-full md:w-64">
+
+        <div className="relative">
           <Filter className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
           <select 
             className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white appearance-none cursor-pointer"
@@ -2232,29 +2392,56 @@ const PortfolioList = () => {
             )}
           </select>
         </div>
+
+        {/* Sorting Dropdown */}
+        <div className="relative">
+          <ArrowUpDown className="w-5 h-5 text-blue-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
+          <select 
+            className="pl-10 pr-4 py-2 w-full border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-blue-50 text-blue-800 font-medium appearance-none cursor-pointer"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+          >
+            {activeTab === 'Student' && (
+              <>
+                <option value="most-projects">Sort: Most Projects</option>
+                <option value="fewest-projects">Sort: Fewest Projects</option>
+              </>
+            )}
+            <option value="name-asc">Sort: Name (A to Z)</option>
+            <option value="name-desc">Sort: Name (Z to A)</option>
+          </select>
+        </div>
       </div>
 
       {/* Directory Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredUsers.map(user => (
-          <div key={user.id} className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all flex flex-col items-center text-center">
+        {sortedUsers.map(user => (
+          /* Card is a standard DIV now */
+          <div 
+            key={user.id} 
+            className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all flex flex-col items-center text-center relative"
+          >
             <img src={user.profilePic} alt="Profile" className="w-20 h-20 rounded-full mb-4 border-2 border-gray-50 shadow-sm object-cover" />
-            <h3 className="text-lg font-bold text-primary">{user.firstName} {user.lastName}</h3>
+            
+            {/* REQ 51 FIXED: Only the Name is the clickable link! */}
+            <Link to={`/portfolios/${user.id}`}>
+              <h3 className="text-lg font-bold text-primary hover:text-blue-600 hover:underline transition-colors">
+                {user.firstName} {user.lastName}
+              </h3>
+            </Link>
             
             {activeTab === 'Student' ? (
-              <p className="text-sm text-gray-500 mb-2">{user.major || 'No Major Set'}</p>
+              <p className="text-sm text-gray-500 mb-2 mt-1">{user.major || 'No Major Set'}</p>
             ) : (
-              <p className="text-sm text-blue-600 mb-2 font-medium">Instructor</p>
+              <p className="text-sm text-purple-600 mb-2 mt-1 font-medium">Instructor</p>
             )}
             
             <div className="flex gap-2 mb-4 justify-center flex-wrap h-14 overflow-hidden">
               {activeTab === 'Student' ? (
-                // Show Student Skills
                 user.skills?.slice(0, 3).map(skill => (
                   <span key={skill} className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md text-xs border border-gray-200">{skill}</span>
                 ))
               ) : (
-                // Show Instructor Linked Courses
                 user.linkedCourses?.map(course => (
                   <span key={course} className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-bold flex items-center">
                     <BookOpen className="w-3 h-3 mr-1" /> {course}
@@ -2265,19 +2452,31 @@ const PortfolioList = () => {
 
             <div className="mt-auto w-full pt-4 border-t border-gray-100 flex items-center justify-between">
               {activeTab === 'Student' ? (
-                <span className="text-sm text-gray-500 font-medium">{getProjectCount(user.id)} Projects</span>
+                <span className="flex items-center text-sm text-gray-500 font-medium">
+                  <Folder className="w-4 h-4 mr-1.5 text-blue-500" />
+                  {user.projectCount} Public Projects
+                </span>
               ) : (
-                <span className="text-sm text-gray-500 font-medium">View Details</span>
+                <span className="text-sm text-gray-500 font-medium">View Teaching Profile</span>
               )}
               
-              <Link to={`/portfolios/${user.id}`} className="flex items-center text-sm font-medium text-primary hover:text-green-600 transition-colors">
-                View Profile <ArrowRight className="w-4 h-4 ml-1" />
+              {/* Added a small view button at the bottom as a secondary click target */}
+              <Link to={`/portfolios/${user.id}`} className="flex items-center text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-colors">
+                View <ArrowRight className="w-4 h-4 ml-1" />
               </Link>
             </div>
           </div>
         ))}
-        {filteredUsers.length === 0 && (
-          <div className="col-span-full py-12 text-center text-gray-500">No {activeTab === 'Student' ? 'students' : 'instructors'} found matching your search.</div>
+        {sortedUsers.length === 0 && (
+          <div className="col-span-full py-12 text-center text-gray-500">
+            No {activeTab === 'Student' ? 'students' : 'instructors'} found matching your search.
+            <button 
+              onClick={() => { setSearchQuery(''); setFilterOption(''); }} 
+              className="block mx-auto mt-2 text-sm text-blue-600 hover:underline font-bold"
+            >
+              Clear all filters
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -2290,23 +2489,73 @@ export default PortfolioList;
 import { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Folder, Star } from 'lucide-react';
+import { Search, Filter, Folder, Star, BookOpen, User, Calendar, ArrowUpDown } from 'lucide-react';
 
 const ExploreProjects = () => {
   const { projects, courses, users } = useData();
+  
+  // --- FILTER & SORT STATES ---
   const [searchQuery, setSearchQuery] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
+  const [instructorFilter, setInstructorFilter] = useState('');
+  const [startDateFilter, setStartDateFilter] = useState(''); 
+  const [endDateFilter, setEndDateFilter] = useState('');     
+  
+  // REQ 45: Sort State
+  const [sortOption, setSortOption] = useState('newest'); 
 
-  // Only show public projects
-  const publicProjects = projects.filter(p => p.visibility === 'public');
+  // Extract lists for dropdowns
+  const instructors = users.filter(u => u.role === 'Course Instructor');
 
-  // Filter Logic (Req 42: Search by title, Req 43: Filter by course)
+  // Only show public projects in the explore tab
+  const publicProjects = projects.filter(p => p.visibility === 'public' && p.status !== 'deactivated');
+
+  // --- REQ 43: ADVANCED FILTER LOGIC ---
   const filteredProjects = publicProjects.filter(project => {
-    const matchesSearch = project.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCourse = courseFilter ? project.courseId === courseFilter : true;
-    return matchesSearch && matchesCourse;
+    if (searchQuery && !project.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (courseFilter && project.courseId !== courseFilter) return false;
+    if (startDateFilter && project.creationDate < startDateFilter) return false;
+    if (endDateFilter && project.creationDate > endDateFilter) return false;
+
+    if (instructorFilter) {
+      const instructor = users.find(u => u.id === parseInt(instructorFilter));
+      if (instructor && instructor.linkedCourses) {
+        const course = courses.find(c => c.id === project.courseId);
+        if (!course || !instructor.linkedCourses.includes(course.code)) return false;
+      } else {
+        return false; 
+      }
+    }
+    return true;
   });
 
+  // --- REQ 45: ADVANCED SORT LOGIC ---
+  // Step 1: Pre-calculate average ratings so the sorting math is fast
+  const enhancedProjects = filteredProjects.map(project => {
+    const ratings = project.ratings || [];
+    const totalRatings = ratings.length;
+    const avgRating = totalRatings > 0 ? (ratings.reduce((sum, r) => sum + r.score, 0) / totalRatings) : 0;
+    return { ...project, avgRating };
+  });
+
+  // Step 2: Apply the selected sort order
+  const sortedProjects = [...enhancedProjects].sort((a, b) => {
+    if (sortOption === 'newest') {
+      return new Date(b.creationDate) - new Date(a.creationDate); // Latest date first
+    }
+    if (sortOption === 'oldest') {
+      return new Date(a.creationDate) - new Date(b.creationDate); // Earliest date first
+    }
+    if (sortOption === 'highest-rated') {
+      return b.avgRating - a.avgRating; // Highest rating first
+    }
+    if (sortOption === 'lowest-rated') {
+      return a.avgRating - b.avgRating; // Lowest rating first
+    }
+    return 0;
+  });
+
+  // --- HELPERS ---
   const getCourseName = (id) => courses.find(c => c.id === id)?.name;
   const getCreatorName = (id) => {
     const user = users.find(u => u.id === id);
@@ -2317,63 +2566,150 @@ const ExploreProjects = () => {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-primary">Explore Student Projects</h2>
 
-      {/* Search and Filter Bar */}
-      <div className="bg-surface p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
-          <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-          <input 
-            type="text" 
-            placeholder="Search projects by title..." 
-            className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      {/* --- REQ 43 & 45: ADVANCED FILTER & SORT BANNER --- */}
+      <div className="bg-surface p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <h3 className="text-sm font-bold text-gray-700">Filter & Sort Projects</h3>
+          </div>
         </div>
-        <div className="relative w-full md:w-64">
-          <Filter className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-          <select 
-            className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm bg-white appearance-none"
-            value={courseFilter}
-            onChange={(e) => setCourseFilter(e.target.value)}
-          >
-            <option value="">All Courses</option>
-            {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        
+        {/* Responsive grid that wraps nicely on different screen sizes */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          
+          {/* Search by Title */}
+          <div className="relative xl:col-span-1">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+            <input 
+              type="text" 
+              placeholder="Search by title..." 
+              className="w-full text-sm border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary transition-all"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          {/* Filter by Course */}
+          <div className="relative xl:col-span-1">
+            <BookOpen className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+            <select 
+              className="w-full text-sm border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
+              value={courseFilter}
+              onChange={(e) => setCourseFilter(e.target.value)}
+            >
+              <option value="">All Courses & BPs</option>
+              {courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+            </select>
+          </div>
+
+          {/* Filter by Instructor */}
+          <div className="relative xl:col-span-1">
+            <User className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+            <select 
+              className="w-full text-sm border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
+              value={instructorFilter}
+              onChange={(e) => setInstructorFilter(e.target.value)}
+            >
+              <option value="">All Instructors</option>
+              {instructors.map(inst => (
+                <option key={inst.id} value={inst.id}>Prof. {inst.firstName} {inst.lastName}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filter by START Date */}
+          <div className="relative xl:col-span-1">
+            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[10px] font-bold text-gray-400 uppercase tracking-wider pointer-events-none">From</span>
+            <input 
+              type="date" 
+              className="w-full text-sm border border-gray-200 rounded-xl pl-12 pr-8 py-2.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary text-gray-600 cursor-pointer"
+              value={startDateFilter}
+              onChange={(e) => setStartDateFilter(e.target.value)}
+            />
+            {startDateFilter && (
+               <button onClick={() => setStartDateFilter('')} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[10px] text-red-500 font-bold hover:underline bg-gray-50 px-1 rounded">X</button>
+            )}
+          </div>
+
+          {/* Filter by END Date */}
+          <div className="relative xl:col-span-1">
+            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[10px] font-bold text-gray-400 uppercase tracking-wider pointer-events-none">To</span>
+            <input 
+              type="date" 
+              className="w-full text-sm border border-gray-200 rounded-xl pl-8 pr-8 py-2.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-primary text-gray-600 cursor-pointer"
+              value={endDateFilter}
+              onChange={(e) => setEndDateFilter(e.target.value)}
+            />
+            {endDateFilter && (
+               <button onClick={() => setEndDateFilter('')} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[10px] text-red-500 font-bold hover:underline bg-gray-50 px-1 rounded">X</button>
+            )}
+          </div>
+
+          {/* REQ 45: SORT Dropdown */}
+          <div className="relative xl:col-span-1">
+            <ArrowUpDown className="w-4 h-4 text-blue-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
+            <select 
+              className="w-full text-sm border border-blue-200 rounded-xl pl-9 pr-3 py-2.5 bg-blue-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer font-medium text-blue-800"
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+            >
+              <option value="newest">Sort: Newest First</option>
+              <option value="oldest">Sort: Oldest First</option>
+              <option value="highest-rated">Sort: Highest Rated</option>
+              <option value="lowest-rated">Sort: Lowest Rated</option>
+            </select>
+          </div>
+
         </div>
       </div>
 
-      {/* Project Grid */}
+      {/* Project Grid - Rendering from the SORTED array */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredProjects.map(project => (
+        {sortedProjects.map(project => (
           <div key={project.id} className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow flex flex-col h-full">
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
                 <Folder className="w-5 h-5" />
               </div>
+              
+              {/* Displays the pre-calculated avgRating from Step 1 */}
               <div className="flex items-center text-yellow-500 text-sm font-bold">
-                <Star className="w-4 h-4 mr-1 fill-current" /> {project.rating || 0}/5
+                <Star className="w-4 h-4 mr-1 fill-current" /> {project.avgRating > 0 ? project.avgRating.toFixed(1) : 0}/5
               </div>
             </div>
             
             <Link to={`/projects/${project.id}`}>
-              <h3 className="font-bold text-lg text-primary mb-1 hover:text-blue-600 transition-colors">{project.title}</h3>
+              <h3 className="font-bold text-lg text-primary mb-1 hover:text-blue-600 transition-colors line-clamp-2">{project.title}</h3>
             </Link>
-            <p className="text-sm text-gray-500 mb-2">{getCourseName(project.courseId)}</p>
+            <p className="text-sm text-gray-500 mb-2 line-clamp-1">{getCourseName(project.courseId)}</p>
             
             <div className="flex flex-wrap gap-2 mb-4 flex-1">
               {project.languages?.slice(0, 3).map(lang => (
-                <span key={lang} className="px-2 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-md text-xs">{lang}</span>
+                <span key={lang} className="px-2 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-md text-xs font-medium">{lang}</span>
               ))}
             </div>
 
             <div className="pt-4 border-t border-gray-100 flex items-center justify-between mt-auto">
-              <span className="text-xs text-gray-500">By {getCreatorName(project.creatorId)}</span>
-              <span className="text-xs text-gray-400">{project.creationDate}</span>
+              <span className="text-xs text-gray-500 truncate max-w-[120px]">By {getCreatorName(project.creatorId)}</span>
+              <span className="text-xs text-gray-400 font-medium bg-gray-50 px-2 py-1 rounded">{project.creationDate}</span>
             </div>
           </div>
         ))}
-        {filteredProjects.length === 0 && (
-          <div className="col-span-full py-12 text-center text-gray-500">No public projects found.</div>
+        
+        {sortedProjects.length === 0 && (
+          <div className="col-span-full py-12 text-center text-gray-500 bg-surface rounded-2xl border border-dashed border-gray-300">
+            No projects match your current filters.
+            <button 
+              onClick={() => { 
+                setSearchQuery(''); setCourseFilter(''); setInstructorFilter(''); 
+                setStartDateFilter(''); setEndDateFilter(''); setSortOption('newest'); 
+              }} 
+              className="block mx-auto mt-2 text-sm text-blue-600 hover:underline font-bold"
+            >
+              Clear all filters
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -2383,569 +2719,19 @@ const ExploreProjects = () => {
 export default ExploreProjects;
 
 // src/pages/Projects/ProjectDetail.jsx
-import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useData } from '../../context/DataContext';
-import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, ExternalLink, CheckCircle2, Circle, Plus, MessageSquare, Star, Flag, AlertTriangle, Folder, PlaySquare, Code, Edit, Trash2, Eye, FileText, X, Search } from 'lucide-react'; // Added Search icon
-
-const ProjectDetail = () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const {
-    projects, courses, tasks, addTask, toggleTaskStatus, users,
-    updateProject, deleteProject, rateProject, projectComments, addProjectComment, taskComments, addTaskComment,
-    invitations, sendInvitation, deleteInvitation,
-    thesisDrafts, uploadThesisDraft, setFinalDraft, showToast 
-  } = useData();
-  const { currentUser } = useAuth();
-
-  const project = projects.find(p => p.id === id);
-  const course = courses.find(c => c.id === project?.courseId);
-  const projectTasks = tasks.filter(t => t.projectId === id);
-  const projComments = projectComments.filter(c => c.projectId === id);
-  const projectDrafts = thesisDrafts?.filter(d => d.projectId === id) || [];
-
-  const [newTaskDesc, setNewTaskDesc] = useState('');
-  const [newProjComment, setNewProjComment] = useState('');
-  const [newTaskCommentText, setNewTaskCommentText] = useState({});
-  const [activeTaskComment, setActiveTaskComment] = useState(null);
-
-  const [newDraftName, setNewDraftName] = useState('');
-  const [newDraftFile, setNewDraftFile] = useState(null); 
-  const [viewingPdf, setViewingPdf] = useState(null);
-
-  // NEW: Search query state for Req 25
-  const [inviteSearchQuery, setInviteSearchQuery] = useState('');
-
-  const [isEditingProj, setIsEditingProj] = useState(false);
-  const [projFormData, setProjFormData] = useState({
-    title: project?.title || '', courseId: project?.courseId || '',
-    githubLink: project?.githubLink || '', languages: project?.languages?.join(', ') || '',
-    demoVideo: project?.demoVideo || '', visibility: project?.visibility || 'private'
-  });
-
-  if (!project) return <div className="p-8 text-center text-gray-500">Project not found.</div>;
-
-  // --- STRICT AUTHORIZATION LOGIC ---
-  const isCreator = currentUser?.id === project.creatorId;
-  
-  const isAcceptedCollaborator = invitations?.some(inv => 
-    inv.projectId === project.id && 
-    inv.receiverId === currentUser?.id && 
-    inv.status === 'accepted'
-  );
-  
-  const isCourseInstructor = currentUser?.role === 'Course Instructor' && 
-                             currentUser?.linkedCourses?.includes(course?.code);
-
-  const canManageProject = isCreator || isAcceptedCollaborator;
-
-  // --- Draft Visibility Logic ---
-  const hasFinalDraft = projectDrafts.some(d => d.isFinal);
-  const visibleDrafts = projectDrafts.filter(draft => {
-    if (canManageProject) return true; 
-    if (hasFinalDraft) return draft.isFinal; 
-    return true; 
-  });
-
-  // --- Search Logic for Invites (Req 25) ---
-  const availableUsersToInvite = users.filter(u => {
-    // Exclude current user and non-relevant roles
-    if (u.id === currentUser?.id) return false;
-    if (u.role !== 'Student' && u.role !== 'Course Instructor') return false;
-    
-    // Filter by Search Query (First Name, Last Name, or Email)
-    if (inviteSearchQuery) {
-      const query = inviteSearchQuery.toLowerCase();
-      const fullName = `${u.firstName} ${u.lastName}`.toLowerCase();
-      const email = u.email.toLowerCase();
-      return fullName.includes(query) || email.includes(query);
-    }
-    return false; // Only show list if they typed something!
-  });
-
-  // --- Handlers ---
-  const handleDraftUploadChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      setNewDraftName(file.name);
-      const reader = new FileReader();
-      reader.onloadend = () => setNewDraftFile(reader.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleUploadDraftSubmit = () => {
-    if (newDraftName && newDraftFile) {
-      uploadThesisDraft(project.id, newDraftName, newDraftFile);
-      setNewDraftName('');
-      setNewDraftFile(null);
-      if (showToast) showToast("Thesis draft uploaded successfully!");
-    } else {
-      if (showToast) showToast("Please select a file to upload.", "error");
-    }
-  };
-
-  const handleViewPdf = (pdfData) => {
-    if (!pdfData) return;
-    if (pdfData.startsWith('data:application/pdf;base64,')) {
-      try {
-        const base64Parts = pdfData.split(',');
-        const binaryString = window.atob(base64Parts[1]);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        setViewingPdf(url);
-      } catch (err) {
-        setViewingPdf(pdfData); 
-      }
-    } else {
-      setViewingPdf(pdfData); 
-    }
-  };
-
-  const handleUpdateProject = (e) => {
-    e.preventDefault();
-    updateProject(project.id, {
-        ...projFormData,
-        languages: projFormData.languages.split(',').map(l => l.trim())
-    });
-    setIsEditingProj(false);
-    if(showToast) showToast("Project updated successfully!");
-  };
-
-  const handleDeleteProject = () => {
-    if (window.confirm("Are you sure you want to completely delete this project? This action cannot be undone.")) {
-        deleteProject(project.id);
-        navigate('/projects');
-        if(showToast) showToast("Project deleted.", "error");
-    }
-  };
-
-  const handleAddTask = (e) => {
-    e.preventDefault();
-    if (!newTaskDesc.trim()) return;
-    addTask({ projectId: project.id, description: newTaskDesc, assigneeId: currentUser.id, status: 'pending', deadline: new Date().toLocaleDateString('en-CA') });
-    setNewTaskDesc('');
-  };
-
-  const handleAddProjComment = (e) => {
-    e.preventDefault();
-    if (!newProjComment.trim()) return;
-    addProjectComment({ projectId: project.id, instructorId: currentUser.id, text: newProjComment });
-    setNewProjComment('');
-  };
-
-  const handleAddTaskComment = (taskId) => {
-    if (!newTaskCommentText[taskId]?.trim()) return;
-    addTaskComment({ taskId, instructorId: currentUser.id, text: newTaskCommentText[taskId] });
-    setNewTaskCommentText({ ...newTaskCommentText, [taskId]: '' });
-    setActiveTaskComment(null);
-  };
-
-  const getUserName = (userId) => {
-    const u = users.find(u => u.id === userId);
-    return u ? `${u.firstName} ${u.lastName}` : 'User';
-  };
-
-  return (
-    <div className="space-y-6 relative">
-      {/* Header */}
-      <div>
-        <Link to="/projects" className="flex items-center text-sm text-gray-500 hover:text-primary mb-4 transition-colors">
-          <ArrowLeft className="w-4 h-4 mr-1" /> Back
-        </Link>
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-3xl font-bold text-primary">{project.title}</h2>
-              {project.status === 'deactivated' && <span className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded-full font-bold">DEACTIVATED</span>}
-            </div>
-            <p className="text-gray-500 font-medium">{course?.name} • Created {project.creationDate}</p>
-            
-            {isCreator && (
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => setIsEditingProj(true)} className="flex items-center text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                  <Edit className="w-3.5 h-3.5 mr-1" /> Edit Project
-                </button>
-                <button onClick={handleDeleteProject} className="flex items-center text-xs font-bold bg-red-50 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors">
-                  <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <span className={`px-3 py-1 rounded-full text-xs font-medium border uppercase ${project.visibility === 'public' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-              {project.visibility}
-            </span>
-
-            <div className="flex items-center gap-1 mt-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  disabled={!isCourseInstructor}
-                  onClick={() => rateProject(project.id, star)}
-                  className={`${star <= (project.rating || 0) ? 'text-yellow-500' : 'text-gray-300'} ${isCourseInstructor ? 'hover:scale-110 cursor-pointer' : 'cursor-default'} transition-transform`}
-                >
-                  <Star className={`w-5 h-5 ${star <= (project.rating || 0) ? 'fill-current' : ''}`} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Edit Modal */}
-      {isEditingProj && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-lg">
-            <h3 className="text-xl font-bold mb-4">Edit Project</h3>
-            <form onSubmit={handleUpdateProject} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Project Title</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.title} onChange={e => setProjFormData({...projFormData, title: e.target.value})} /></div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Course</label>
-                <select required className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.courseId} onChange={e => setProjFormData({...projFormData, courseId: e.target.value})}>
-                  {courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
-                </select>
-              </div>
-              <div><label className="block text-sm font-medium mb-1">GitHub Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.githubLink} onChange={e => setProjFormData({...projFormData, githubLink: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Demo Video Link (YouTube/Vimeo)</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.demoVideo} onChange={e => setProjFormData({...projFormData, demoVideo: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Languages Used (comma separated)</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.languages} onChange={e => setProjFormData({...projFormData, languages: e.target.value})} /></div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Visibility</label>
-                <select className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.visibility} onChange={e => setProjFormData({...projFormData, visibility: e.target.value})}>
-                  <option value="private">Private</option>
-                  <option value="public">Public</option>
-                </select>
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <button type="button" onClick={() => setIsEditingProj(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm text-white bg-primary rounded-lg hover:bg-gray-800">Save Changes</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Main Content Area */}
-        <div className="lg:col-span-2 space-y-6">
-
-          {/* BACHELOR PROJECT THESIS DRAFTS */}
-          {course?.code === 'BP' && (
-            <div className="bg-surface p-6 rounded-2xl shadow-sm border border-purple-100 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-primary flex items-center">
-                  <Folder className="w-5 h-5 mr-2 text-purple-600" /> Thesis Drafts
-                </h3>
-                {hasFinalDraft && !canManageProject && (
-                  <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">FINAL DRAFT ONLY</span>
-                )}
-              </div>
-
-              <div className="space-y-3 mb-4">
-                {visibleDrafts.length === 0 ? <p className="text-sm text-gray-500">No drafts available.</p> : null}
-                {visibleDrafts.map(draft => (
-                  <div key={draft.id} className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border gap-3 ${draft.isFinal ? 'bg-green-50 border-green-200 shadow-sm' : 'bg-white border-gray-200'}`}>
-                    <div className="flex items-center overflow-hidden">
-                      <FileText className={`w-5 h-5 mr-3 shrink-0 ${draft.isFinal ? 'text-green-600' : 'text-gray-400'}`} />
-                      <div className="truncate">
-                        <p className="text-sm font-bold text-primary truncate">{draft.name}</p>
-                        <p className="text-xs text-gray-500">Uploaded: {draft.date}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 shrink-0">
-                      {draft.isFinal && <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Final Draft</span>}
-                      
-                      <button 
-                         onClick={() => handleViewPdf(draft.fileData || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf')} 
-                         className="flex items-center text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1.5 rounded hover:bg-blue-100 transition-colors"
-                       >
-                         <Eye className="w-3 h-3 mr-1" /> View
-                      </button>
-
-                      {isCreator && !draft.isFinal && (
-                        <button onClick={() => setFinalDraft(project.id, draft.id)} className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1.5 rounded hover:bg-purple-100 transition-colors">
-                          Mark Final
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {canManageProject && (
-                <div className="flex flex-col sm:flex-row gap-2 mt-2 pt-4 border-t border-purple-50">
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer"
-                    onChange={handleDraftUploadChange}
-                  />
-                  <button onClick={handleUploadDraftSubmit} className="bg-purple-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors shadow-sm">
-                    Upload Draft
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TASK LIST */}
-          <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-6">Task List</h3>
-            <div className="space-y-4 mb-6">
-              {projectTasks.map(task => {
-                const tComments = taskComments.filter(c => c.taskId === task.id);
-                return (
-                  <div key={task.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <button 
-                          disabled={!canManageProject}
-                          onClick={() => toggleTaskStatus(task.id)} 
-                          className={`transition-colors ${!canManageProject ? 'cursor-default opacity-50' : 'hover:text-primary'} ${task.status === 'completed' ? 'text-green-500' : 'text-gray-300'}`}
-                        >
-                          {task.status === 'completed' ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
-                        </button>
-                        <span className={`text-sm font-medium ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-primary'}`}>{task.description}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-400">Due: {task.deadline}</span>
-                        {isCourseInstructor && (
-                          <button onClick={() => setActiveTaskComment(activeTaskComment === task.id ? null : task.id)} className="text-gray-400 hover:text-primary">
-                            <MessageSquare className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {tComments.length > 0 && (
-                      <div className="p-4 bg-white border-t border-gray-50 space-y-2">
-                        {tComments.map(c => (
-                          <div key={c.id} className="text-xs bg-blue-50 p-2 rounded-lg text-blue-900">
-                            <span className="font-bold">{getUserName(c.instructorId)}: </span> {c.text}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {isCourseInstructor && activeTaskComment === task.id && (
-                      <div className="p-3 bg-white border-t border-gray-50 flex gap-2">
-                        <input
-                          type="text" placeholder="Add feedback on this task..." className="flex-1 text-xs px-3 py-1 border rounded-lg focus:ring-primary"
-                          value={newTaskCommentText[task.id] || ''} onChange={(e) => setNewTaskCommentText({ ...newTaskCommentText, [task.id]: e.target.value })}
-                        />
-                        <button onClick={() => handleAddTaskComment(task.id)} className="text-xs bg-primary text-white px-3 rounded-lg">Save</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {canManageProject && (
-              <form onSubmit={handleAddTask} className="flex gap-2">
-                <input type="text" placeholder="Add a new task..." className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm" value={newTaskDesc} onChange={(e) => setNewTaskDesc(e.target.value)} />
-                <button type="submit" className="bg-primary text-white p-2 rounded-xl hover:bg-gray-800 transition-colors"><Plus className="w-5 h-5" /></button>
-              </form>
-            )}
-          </div>
-
-          {/* GENERAL PROJECT FEEDBACK */}
-          <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-4">Instructor Feedback</h3>
-            <div className="space-y-4 mb-4">
-              {projComments.length === 0 ? <p className="text-sm text-gray-500">No feedback provided yet.</p> : null}
-              {projComments.map(c => (
-                <div key={c.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                  <p className="text-sm font-bold text-primary mb-1">{getUserName(c.instructorId)} <span className="text-xs font-normal text-gray-400 ml-2">{c.date}</span></p>
-                  <p className="text-sm text-gray-600">{c.text}</p>
-                </div>
-              ))}
-            </div>
-
-            {isCourseInstructor && (
-              <form onSubmit={handleAddProjComment} className="mt-4">
-                <textarea rows="3" placeholder="Write overall project feedback..." className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm mb-2" value={newProjComment} onChange={(e) => setNewProjComment(e.target.value)}></textarea>
-                <button type="submit" className="bg-primary text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800 transition-colors">Post Feedback</button>
-              </form>
-            )}
-          </div>
-
-        </div>
-
-        {/* Sidebar: Details & Manage Team */}
-        <div className="space-y-6">
-          <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-4">Project Details</h3>
-            
-            <div className="space-y-6">
-              {project.githubLink && (
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Repository</p>
-                  <a href={project.githubLink} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-gray-900 text-white w-full py-2.5 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm">
-                    <Code className="w-4 h-4" /> View Source Code
-                  </a>
-                </div>
-              )}
-
-              {project.demoVideo && (
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Live Preview</p>
-                  <a href={project.demoVideo} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-100 w-full py-2.5 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors shadow-sm">
-                    <PlaySquare className="w-4 h-4" /> Watch Demo Video
-                  </a>
-                </div>
-              )}
-
-              <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Languages Used</p>
-                <div className="flex flex-wrap gap-2">
-                  {project.languages?.map(lang => <span key={lang} className="px-3 py-1 bg-blue-50 text-blue-700 font-medium rounded-lg text-xs">{lang}</span>)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* MANAGE TEAM CARD */}
-          <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-4">Manage Team</h3>
-
-            <div className="space-y-3 mb-6">
-              <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden">
-                    <img src={users.find(u => u.id === project.creatorId)?.profilePic} alt="Creator" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-primary">{users.find(u => u.id === project.creatorId)?.firstName}</p>
-                    <p className="text-xs text-gray-500">Creator</p>
-                  </div>
-                </div>
-              </div>
-
-              {invitations.filter(inv => inv.projectId === project.id).map(inv => {
-                const receiver = users.find(u => u.id === inv.receiverId);
-                return (
-                  <div key={inv.id} className="flex items-center justify-between p-2 border border-gray-100 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <img src={receiver?.profilePic} className="w-8 h-8 rounded-full" alt="" />
-                      <div>
-                        <p className="text-sm font-bold text-primary">{receiver?.firstName}</p>
-                        <p className={`text-xs capitalize ${inv.status === 'accepted' ? 'text-green-600' : inv.status === 'rejected' ? 'text-red-500' : 'text-yellow-500'}`}>
-                          {inv.status}
-                        </p>
-                      </div>
-                    </div>
-                    {isCreator && (
-                      <button onClick={() => deleteInvitation(inv.id)} className="text-gray-400 hover:text-red-500 text-xs font-medium">Remove</button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* NEW: Dynamic Search for Invites (Req 25) */}
-            {isCreator && (
-              <div className="pt-4 border-t border-gray-100">
-                <p className="text-sm font-bold text-primary mb-2">Invite User</p>
-                <div className="relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search by name or email..."
-                    className="w-full text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-2 bg-white mb-2 focus:outline-none focus:ring-2 focus:ring-primary"
-                    value={inviteSearchQuery}
-                    onChange={(e) => setInviteSearchQuery(e.target.value)}
-                  />
-                </div>
-                
-                {/* Search Results Dropdown */}
-                {inviteSearchQuery.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-lg shadow-sm bg-white mt-1">
-                    {availableUsersToInvite.length > 0 ? (
-                      availableUsersToInvite.map(u => (
-                        <div 
-                          key={u.id} 
-                          className="flex items-center justify-between p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
-                          onClick={() => {
-                            sendInvitation(project.id, currentUser.id, u.id);
-                            setInviteSearchQuery(''); // Clear search on invite
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <img src={u.profilePic} className="w-6 h-6 rounded-full" alt="" />
-                            <div className="overflow-hidden">
-                              <p className="text-xs font-bold text-primary truncate">{u.firstName} {u.lastName}</p>
-                              <p className="text-[10px] text-gray-500 truncate">{u.email}</p>
-                            </div>
-                          </div>
-                          <span className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded uppercase font-bold tracking-wider ml-2">Invite</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="p-3 text-xs text-center text-gray-500">No matching users found.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
-      {/* --- SECURE PDF VIEWER MODAL --- */}
-      {viewingPdf && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 backdrop-blur-sm transition-opacity">
-          <div className="bg-white rounded-2xl p-4 w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold flex items-center"><FileText className="w-5 h-5 mr-2 text-blue-600"/> Document Viewer</h3>
-              <button onClick={() => setViewingPdf(null)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-colors">
-                <X className="w-5 h-5"/>
-              </button>
-            </div>
-            
-            <object 
-              data={viewingPdf} 
-              type="application/pdf" 
-              className="w-full flex-1 border border-gray-200 rounded-lg bg-gray-50"
-            >
-              <div className="flex items-center justify-center h-full text-gray-500 flex-col">
-                <AlertTriangle className="w-8 h-8 mb-2" />
-                <p>Your browser does not support viewing PDFs directly.</p>
-                <a href={viewingPdf} download className="text-blue-500 hover:underline mt-2">Click here to download it instead.</a>
-              </div>
-            </object>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-};
-
-export default ProjectDetail;
-
-// src/pages/Projects/ProjectDetail.jsx
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, MessageSquare, Star, AlertTriangle, Folder, PlaySquare, Code, Edit, Trash2, Eye, FileText, X, Search, CheckSquare } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Star, AlertTriangle, Folder, PlaySquare, Code, Edit, Trash2, Eye, FileText, X, Search, CheckSquare, ChevronUp, ChevronDown } from 'lucide-react';
 
 const ProjectDetail = () => {
+  // --- 1. HOOKS & CONTEXT ---
   const { id } = useParams();
   const navigate = useNavigate();
   const {
     projects, courses, tasks, addTask, updateTask, deleteTask, users,
-    updateProject, deleteProject, rateProject, projectComments, addProjectComment, taskComments, addTaskComment,
+    updateProject, deleteProject, rateProject, projectComments, addProjectComment, updateProjectComment, deleteProjectComment, taskComments, addTaskComment,
     invitations, sendInvitation, deleteInvitation,
     thesisDrafts, uploadThesisDraft, setFinalDraft, showToast 
   } = useData();
@@ -2953,27 +2739,22 @@ const ProjectDetail = () => {
 
   const project = projects.find(p => p.id === id);
   const course = courses.find(c => c.id === project?.courseId);
-  const projectTasks = tasks.filter(t => t.projectId === id);
-  const projComments = projectComments.filter(c => c.projectId === id);
-  const projectDrafts = thesisDrafts?.filter(d => d.projectId === id) || [];
 
+  // --- 2. COMPONENT STATE (Must be declared before we use them!) ---
   const [newProjComment, setNewProjComment] = useState('');
   const [newTaskCommentText, setNewTaskCommentText] = useState({});
   const [activeTaskComment, setActiveTaskComment] = useState(null);
-
+  const [editingProjCommentId, setEditingProjCommentId] = useState(null);
+  const [editProjCommentText, setEditProjCommentText] = useState('');
   const [newDraftName, setNewDraftName] = useState('');
   const [newDraftFile, setNewDraftFile] = useState(null); 
   const [viewingPdf, setViewingPdf] = useState(null);
-
   const [inviteSearchQuery, setInviteSearchQuery] = useState('');
-
-  // --- REQ 32: Advanced Task States ---
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskDeadline, setNewTaskDeadline] = useState(new Date().toLocaleDateString('en-CA'));
   const [newTaskAssignee, setNewTaskAssignee] = useState(project?.creatorId || '');
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editTaskData, setEditTaskData] = useState({});
-
   const [isEditingProj, setIsEditingProj] = useState(false);
   const [projFormData, setProjFormData] = useState({
     title: project?.title || '', courseId: project?.courseId || '',
@@ -2981,25 +2762,23 @@ const ProjectDetail = () => {
     demoVideo: project?.demoVideo || '', visibility: project?.visibility || 'private'
   });
 
-  // Ensure default assignee is set when project loads
-  useEffect(() => {
-    if (project && !newTaskAssignee) setNewTaskAssignee(project.creatorId);
-  }, [project]);
+  // --- 3. DERIVED DATA & AUTHORIZATION ---
+  const ratings = project?.ratings || [];
+  const totalRatings = ratings.length;
+  const averageScore = totalRatings > 0 ? (ratings.reduce((sum, r) => sum + r.score, 0) / totalRatings).toFixed(1) : 0;
+  const myRating = ratings.find(r => r.instructorId === currentUser?.id)?.score || 0;
 
-  if (!project) return <div className="p-8 text-center text-gray-500">Project not found.</div>;
-
-  // --- STRICT AUTHORIZATION LOGIC ---
-  const isCreator = currentUser?.id === project.creatorId;
-  const isAcceptedCollaborator = invitations?.some(inv => inv.projectId === project.id && inv.receiverId === currentUser?.id && inv.status === 'accepted');
+  const isCreator = currentUser?.id === project?.creatorId;
+  const isAcceptedCollaborator = invitations?.some(inv => inv.projectId === id && inv.receiverId === currentUser?.id && inv.status === 'accepted');
   const isCourseInstructor = currentUser?.role === 'Course Instructor' && currentUser?.linkedCourses?.includes(course?.code);
   const canManageProject = isCreator || isAcceptedCollaborator;
+  const canViewFeedback = canManageProject || isCourseInstructor || currentUser?.role === 'Administrator';
 
-  // --- Dynamic Team List (For Task Assignments) ---
-  const teamMembers = [
-    users.find(u => u.id === project.creatorId),
-    ...invitations.filter(inv => inv.projectId === project.id && inv.status === 'accepted').map(inv => users.find(u => u.id === inv.receiverId))
-  ].filter(Boolean);
-
+  // --- 4. FILTERED LISTS ---
+  const projectTasks = tasks.filter(t => t.projectId === id).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const projComments = projectComments.filter(c => c.projectId === id);
+  const projectDrafts = thesisDrafts?.filter(d => d.projectId === id) || [];
+  
   const hasFinalDraft = projectDrafts.some(d => d.isFinal);
   const visibleDrafts = projectDrafts.filter(draft => {
     if (canManageProject) return true; 
@@ -3007,6 +2786,12 @@ const ProjectDetail = () => {
     return true; 
   });
 
+  const teamMembers = [
+    users.find(u => u.id === project?.creatorId),
+    ...invitations.filter(inv => inv.projectId === id && inv.status === 'accepted').map(inv => users.find(u => u.id === inv.receiverId))
+  ].filter(Boolean);
+
+  // Safely uses inviteSearchQuery because it was declared at the top!
   const availableUsersToInvite = users.filter(u => {
     if (u.id === currentUser?.id) return false;
     if (u.role !== 'Student' && u.role !== 'Course Instructor') return false;
@@ -3017,7 +2802,14 @@ const ProjectDetail = () => {
     return false;
   });
 
-  // --- Handlers ---
+  // --- 5. EFFECTS ---
+  useEffect(() => {
+    if (project && !newTaskAssignee) setNewTaskAssignee(project.creatorId);
+  }, [project]);
+
+  if (!project) return <div className="p-8 text-center text-gray-500">Project not found.</div>;
+
+  // --- 6. HANDLERS ---
   const handleDraftUploadChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -3056,43 +2848,55 @@ const ProjectDetail = () => {
     e.preventDefault();
     updateProject(project.id, { ...projFormData, languages: projFormData.languages.split(',').map(l => l.trim()) });
     setIsEditingProj(false);
-    if(showToast) showToast("Project updated successfully!");
+    if (showToast) showToast("Project updated successfully!");
   };
 
   const handleDeleteProject = () => {
     if (window.confirm("Are you sure you want to completely delete this project? This action cannot be undone.")) {
-        deleteProject(project.id);
-        navigate('/projects');
-        if(showToast) showToast("Project deleted.", "error");
+      deleteProject(project.id);
+      navigate('/projects');
+      if (showToast) showToast("Project deleted.", "error");
     }
   };
 
-  // REQ 32: Create Task
   const handleAddTask = (e) => {
     e.preventDefault();
     if (!newTaskDesc.trim()) return;
-    
-    // BP Projects lock the assignee to the creator
     const finalAssignee = course?.code === 'BP' ? project.creatorId : (parseInt(newTaskAssignee) || project.creatorId);
-
-    addTask({ 
-      projectId: project.id, 
-      description: newTaskDesc, 
-      assigneeId: finalAssignee, 
-      status: 'pending', 
-      deadline: newTaskDeadline 
+    addTask({
+      projectId: project.id,
+      description: newTaskDesc,
+      assigneeId: finalAssignee,
+      status: 'pending',
+      deadline: newTaskDeadline,
+      order: projectTasks.length > 0 ? Math.max(...projectTasks.map(t => t.order || 0)) + 1 : 1
     });
-    
     setNewTaskDesc('');
     setNewTaskDeadline(new Date().toLocaleDateString('en-CA'));
-    if(showToast) showToast("Task created successfully!");
+    if (showToast) showToast("Task created successfully!");
   };
 
-  // REQ 32: Save Edited Task
   const handleSaveEditTask = () => {
     updateTask(editingTaskId, editTaskData);
     setEditingTaskId(null);
-    if(showToast) showToast("Task updated successfully!");
+    if (showToast) showToast("Task updated successfully!");
+  };
+
+  const moveTask = (task, direction) => {
+    const idx = projectTasks.findIndex(t => t.id === task.id);
+    if (direction === 'up' && idx > 0) {
+      const prevTask = projectTasks[idx - 1];
+      const taskOrder = task.order !== undefined ? task.order : idx + 1;
+      const prevTaskOrder = prevTask.order !== undefined ? prevTask.order : idx;
+      updateTask(task.id, { order: prevTaskOrder });
+      updateTask(prevTask.id, { order: taskOrder });
+    } else if (direction === 'down' && idx < projectTasks.length - 1) {
+      const nextTask = projectTasks[idx + 1];
+      const taskOrder = task.order !== undefined ? task.order : idx + 1;
+      const nextTaskOrder = nextTask.order !== undefined ? nextTask.order : idx + 2;
+      updateTask(task.id, { order: nextTaskOrder });
+      updateTask(nextTask.id, { order: taskOrder });
+    }
   };
 
   const handleAddProjComment = (e) => {
@@ -3100,6 +2904,13 @@ const ProjectDetail = () => {
     if (!newProjComment.trim()) return;
     addProjectComment({ projectId: project.id, instructorId: currentUser.id, text: newProjComment });
     setNewProjComment('');
+  };
+
+  const handleSaveEditProjComment = (commentId) => {
+    if (!editProjCommentText.trim()) return;
+    updateProjectComment(commentId, editProjCommentText);
+    setEditingProjCommentId(null);
+    if (showToast) showToast("Feedback updated!");
   };
 
   const handleAddTaskComment = (taskId) => {
@@ -3128,7 +2939,7 @@ const ProjectDetail = () => {
               {project.status === 'deactivated' && <span className="text-sm bg-red-100 text-red-600 px-3 py-1 rounded-full font-bold">DEACTIVATED</span>}
             </div>
             <p className="text-gray-500 font-medium">{course?.name} • Created {project.creationDate}</p>
-            
+
             {isCreator && (
               <div className="flex gap-2 mt-4">
                 <button onClick={() => setIsEditingProj(true)} className="flex items-center text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"><Edit className="w-3.5 h-3.5 mr-1" /> Edit Project</button>
@@ -3138,11 +2949,33 @@ const ProjectDetail = () => {
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className={`px-3 py-1 rounded-full text-xs font-medium border uppercase ${project.visibility === 'public' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>{project.visibility}</span>
-            <div className="flex items-center gap-1 mt-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button key={star} disabled={!isCourseInstructor} onClick={() => rateProject(project.id, star)} className={`${star <= (project.rating || 0) ? 'text-yellow-500' : 'text-gray-300'} ${isCourseInstructor ? 'hover:scale-110 cursor-pointer' : 'cursor-default'} transition-transform`}><Star className={`w-5 h-5 ${star <= (project.rating || 0) ? 'fill-current' : ''}`} /></button>
-              ))}
+
+            {/* REQ 39: Read-Only Global Average with Vector Fractional Stars */}
+            <div className="flex items-center gap-1.5 mt-1 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
+              <span className="text-sm font-bold text-gray-800">
+                {averageScore > 0 ? averageScore : '0.0'}
+              </span>
+
+              <div className="relative inline-flex">
+                <div className="flex">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star key={`empty-${star}`} className="w-4 h-4 text-gray-200" />
+                  ))}
+                </div>
+
+                <div
+                  className="flex absolute top-0 left-0 overflow-hidden"
+                  style={{ width: `${(averageScore / 5) * 100}%` }}
+                >
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star key={`gold-${star}`} className="w-4 h-4 text-yellow-500 fill-current shrink-0" />
+                  ))}
+                </div>
+              </div>
+
+              <span className="text-xs text-gray-500 font-medium ml-1">({totalRatings})</span>
             </div>
+
           </div>
         </div>
       </div>
@@ -3153,12 +2986,12 @@ const ProjectDetail = () => {
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-lg">
             <h3 className="text-xl font-bold mb-4">Edit Project</h3>
             <form onSubmit={handleUpdateProject} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Project Title</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.title} onChange={e => setProjFormData({...projFormData, title: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Course</label><select required className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.courseId} onChange={e => setProjFormData({...projFormData, courseId: e.target.value})}>{courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}</select></div>
-              <div><label className="block text-sm font-medium mb-1">GitHub Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.githubLink} onChange={e => setProjFormData({...projFormData, githubLink: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Demo Video Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.demoVideo} onChange={e => setProjFormData({...projFormData, demoVideo: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Languages (comma separated)</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.languages} onChange={e => setProjFormData({...projFormData, languages: e.target.value})} /></div>
-              <div><label className="block text-sm font-medium mb-1">Visibility</label><select className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.visibility} onChange={e => setProjFormData({...projFormData, visibility: e.target.value})}><option value="private">Private</option><option value="public">Public</option></select></div>
+              <div><label className="block text-sm font-medium mb-1">Project Title</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.title} onChange={e => setProjFormData({ ...projFormData, title: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Course</label><select required className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.courseId} onChange={e => setProjFormData({ ...projFormData, courseId: e.target.value })}>{courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}</select></div>
+              <div><label className="block text-sm font-medium mb-1">GitHub Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.githubLink} onChange={e => setProjFormData({ ...projFormData, githubLink: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Demo Video Link</label><input type="url" className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.demoVideo} onChange={e => setProjFormData({ ...projFormData, demoVideo: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Languages (comma separated)</label><input type="text" required className="w-full px-3 py-2 border rounded-lg text-sm" value={projFormData.languages} onChange={e => setProjFormData({ ...projFormData, languages: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1">Visibility</label><select className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={projFormData.visibility} onChange={e => setProjFormData({ ...projFormData, visibility: e.target.value })}><option value="private">Private</option><option value="public">Public</option></select></div>
               <div className="flex justify-end gap-2 pt-4"><button type="button" onClick={() => setIsEditingProj(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 text-sm text-white bg-primary rounded-lg hover:bg-gray-800">Save</button></div>
             </form>
           </div>
@@ -3202,32 +3035,29 @@ const ProjectDetail = () => {
 
           {/* TASK LIST (REQ 32: CRUD & Permissions) */}
           <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-6 flex items-center"><CheckSquare className="w-5 h-5 mr-2 text-blue-500"/> Task Management</h3>
-            
+            <h3 className="text-lg font-bold text-primary mb-6 flex items-center"><CheckSquare className="w-5 h-5 mr-2 text-blue-500" /> Task Management</h3>
+
             <div className="space-y-4 mb-6">
               {projectTasks.length === 0 && <p className="text-sm text-gray-500 italic">No tasks created yet.</p>}
-              
-              {projectTasks.map(task => {
+
+              {projectTasks.map((task, index) => {
                 const tComments = taskComments.filter(c => c.taskId === task.id);
-                
-                // REQ 32 Authorization: Collaborators can ONLY change status of THEIR task. Creator can do everything.
                 const canEditStatus = isCreator || currentUser?.id === task.assigneeId;
 
                 return editingTaskId === task.id ? (
-                  // --- INLINE EDIT FORM (Creator Only) ---
                   <div key={task.id} className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex flex-col gap-3 shadow-inner">
                     <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1">Edit Task</h4>
-                    <input type="text" value={editTaskData.description} onChange={e => setEditTaskData({...editTaskData, description: e.target.value})} className="border border-blue-200 p-2 rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-400"/>
+                    <input type="text" value={editTaskData.description} onChange={e => setEditTaskData({ ...editTaskData, description: e.target.value })} className="border border-blue-200 p-2 rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-400" />
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <input type="date" value={editTaskData.deadline} onChange={e => setEditTaskData({...editTaskData, deadline: e.target.value})} className="border border-blue-200 p-2 rounded-lg text-sm flex-1 outline-none"/>
-                      
+                      <input type="date" value={editTaskData.deadline} onChange={e => setEditTaskData({ ...editTaskData, deadline: e.target.value })} className="border border-blue-200 p-2 rounded-lg text-sm flex-1 outline-none" />
+
                       {course?.code !== 'BP' && (
-                        <select value={editTaskData.assigneeId} onChange={e => setEditTaskData({...editTaskData, assigneeId: parseInt(e.target.value)})} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none">
+                        <select value={editTaskData.assigneeId} onChange={e => setEditTaskData({ ...editTaskData, assigneeId: parseInt(e.target.value) })} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none">
                           {teamMembers.map(m => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}
                         </select>
                       )}
-                      
-                      <select value={editTaskData.status} onChange={e => setEditTaskData({...editTaskData, status: e.target.value})} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none font-medium">
+
+                      <select value={editTaskData.status} onChange={e => setEditTaskData({ ...editTaskData, status: e.target.value })} className="border border-blue-200 p-2 rounded-lg text-sm bg-white flex-1 outline-none font-medium">
                         <option value="pending">Pending</option>
                         <option value="post-poned">Postponed</option>
                         <option value="completed">Completed</option>
@@ -3239,21 +3069,24 @@ const ProjectDetail = () => {
                     </div>
                   </div>
                 ) : (
-                  // --- TASK DISPLAY VIEW ---
                   <div key={task.id} className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
                     <div className="flex items-center justify-between p-4 bg-gray-50 hover:bg-white transition-colors">
                       <div className="flex items-center gap-3 flex-1">
-                        
-                        {/* Status Dropdown (Creator or Assigned Collaborator) */}
+                        {isCreator && (
+                          <div className="flex flex-col mr-1 items-center justify-center text-gray-300">
+                            <button disabled={index === 0} onClick={() => moveTask(task, 'up')} className="hover:text-primary disabled:opacity-30 transition-colors"><ChevronUp className="w-4 h-4" /></button>
+                            <button disabled={index === projectTasks.length - 1} onClick={() => moveTask(task, 'down')} className="hover:text-primary disabled:opacity-30 transition-colors"><ChevronDown className="w-4 h-4" /></button>
+                          </div>
+                        )}
+
                         <select
                           disabled={!canEditStatus}
                           value={task.status}
                           onChange={(e) => updateTask(task.id, { status: e.target.value })}
-                          className={`text-[10px] font-bold px-2 py-1 rounded border outline-none tracking-wider uppercase ${
-                            task.status === 'completed' ? 'bg-green-100 text-green-700 border-green-200' :
-                            task.status === 'post-poned' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                            'bg-blue-100 text-blue-700 border-blue-200'
-                          } ${!canEditStatus ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:shadow-sm transition-all'}`}
+                          className={`text-[10px] font-bold px-2 py-1 rounded border outline-none tracking-wider uppercase ${task.status === 'completed' ? 'bg-green-100 text-green-700 border-green-200' :
+                              task.status === 'post-poned' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                'bg-blue-100 text-blue-700 border-blue-200'
+                            } ${!canEditStatus ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:shadow-sm transition-all'}`}
                         >
                           <option value="pending">Pending</option>
                           <option value="post-poned">Postponed</option>
@@ -3268,12 +3101,11 @@ const ProjectDetail = () => {
 
                       <div className="flex items-center gap-4">
                         <span className="text-xs font-medium text-gray-400 whitespace-nowrap bg-white px-2 py-1 rounded border border-gray-100 shadow-sm">{task.deadline}</span>
-                        
-                        {/* ONLY Creator can fully Edit or Delete tasks */}
+
                         {isCreator && (
                           <div className="flex gap-1">
-                            <button onClick={() => { setEditingTaskId(task.id); setEditTaskData(task); }} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Task"><Edit className="w-4 h-4"/></button>
-                            <button onClick={() => deleteTask(task.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors" title="Delete Task"><Trash2 className="w-4 h-4"/></button>
+                            <button onClick={() => { setEditingTaskId(task.id); setEditTaskData(task); }} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Task"><Edit className="w-4 h-4" /></button>
+                            <button onClick={() => deleteTask(task.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors" title="Delete Task"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         )}
 
@@ -3283,7 +3115,7 @@ const ProjectDetail = () => {
                       </div>
                     </div>
 
-                    {tComments.length > 0 && (
+                    {canViewFeedback && tComments.length > 0 && (
                       <div className="p-4 bg-white border-t border-gray-50 space-y-2">
                         {tComments.map(c => <div key={c.id} className="text-xs bg-blue-50 p-2 rounded-lg text-blue-900"><span className="font-bold">{getUserName(c.instructorId)}: </span> {c.text}</div>)}
                       </div>
@@ -3300,15 +3132,13 @@ const ProjectDetail = () => {
               })}
             </div>
 
-            {/* ONLY Creator can Add Tasks */}
             {isCreator && (
               <form onSubmit={handleAddTask} className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3 mt-6">
                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Create New Task</h4>
                 <input type="text" required placeholder="Short task description (1 line)..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" value={newTaskDesc} onChange={(e) => setNewTaskDesc(e.target.value)} />
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input type="date" required className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary text-gray-600" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} />
-                  
-                  {/* BP Projects cannot have collaborators, so we hide the assignee dropdown */}
+
                   {course?.code !== 'BP' ? (
                     <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-primary" value={newTaskAssignee} onChange={(e) => setNewTaskAssignee(e.target.value)}>
                       <option value="" disabled>Assign to...</option>
@@ -3326,20 +3156,72 @@ const ProjectDetail = () => {
             )}
           </div>
 
-          {/* GENERAL PROJECT FEEDBACK */}
-          <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-primary mb-4">Instructor Feedback</h3>
-            <div className="space-y-4 mb-4">
-              {projComments.length === 0 ? <p className="text-sm text-gray-500">No feedback provided yet.</p> : null}
-              {projComments.map(c => <div key={c.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100"><p className="text-sm font-bold text-primary mb-1">{getUserName(c.instructorId)} <span className="text-xs font-normal text-gray-400 ml-2">{c.date}</span></p><p className="text-sm text-gray-600">{c.text}</p></div>)}
+          {canViewFeedback && (
+            <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="text-lg font-bold text-primary mb-4">Instructor Feedback</h3>
+              <div className="space-y-4 mb-4">
+                {projComments.length === 0 ? <p className="text-sm text-gray-500">No feedback provided yet.</p> : null}
+                {projComments.map(c => (
+                  <div key={c.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm font-bold text-primary">
+                        {getUserName(c.instructorId)} <span className="text-xs font-normal text-gray-400 ml-2">{c.date}</span>
+                      </p>
+
+                      {c.instructorId === currentUser?.id && (
+                        <div className="flex gap-1">
+                          <button onClick={() => { setEditingProjCommentId(c.id); setEditProjCommentText(c.text); }} className="text-blue-500 hover:text-blue-700 p-1" title="Edit">
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => { if (window.confirm("Delete this feedback?")) deleteProjectComment(c.id); }} className="text-red-500 hover:text-red-700 p-1" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {editingProjCommentId === c.id ? (
+                      <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                        <input type="text" className="flex-1 px-3 py-1 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 text-sm outline-none" value={editProjCommentText} onChange={e => setEditProjCommentText(e.target.value)} autoFocus />
+                        <div className="flex gap-2">
+                          <button onClick={() => setEditingProjCommentId(null)} className="px-3 py-1 bg-white border border-gray-300 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-50">Cancel</button>
+                          <button onClick={() => handleSaveEditProjComment(c.id)} className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700">Save</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600">{c.text}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {isCourseInstructor && (
+                <div className="mt-6 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-gray-700">Leave a Review</h4>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500 mr-2">Your Rating:</span>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => rateProject(project.id, currentUser.id, star)}
+                          className={`${star <= myRating ? 'text-yellow-500' : 'text-gray-300'} hover:scale-110 transition-transform`}
+                        >
+                          <Star className={`w-5 h-5 ${star <= myRating ? 'fill-current' : ''}`} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleAddProjComment}>
+                    <textarea rows="3" placeholder="Write overall project feedback..." className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm mb-2" value={newProjComment} onChange={(e) => setNewProjComment(e.target.value)}></textarea>
+                    <button type="submit" className="bg-primary text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800 transition-colors">Post Feedback</button>
+                  </form>
+                </div>
+              )}
             </div>
-            {isCourseInstructor && (
-              <form onSubmit={handleAddProjComment} className="mt-4">
-                <textarea rows="3" placeholder="Write overall project feedback..." className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm mb-2" value={newProjComment} onChange={(e) => setNewProjComment(e.target.value)}></textarea>
-                <button type="submit" className="bg-primary text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800 transition-colors">Post Feedback</button>
-              </form>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Sidebar: Details & Manage Team */}
@@ -3359,7 +3241,7 @@ const ProjectDetail = () => {
               <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden"><img src={users.find(u => u.id === project.creatorId)?.profilePic} alt="Creator" /></div><div><p className="text-sm font-bold text-primary">{users.find(u => u.id === project.creatorId)?.firstName}</p><p className="text-xs text-gray-500">Creator</p></div></div>
               </div>
-              {invitations.filter(inv => inv.projectId === project.id).map(inv => {
+              {invitations.filter(inv => inv.projectId === project.id && inv.status !== 'info').map(inv => {
                 const receiver = users.find(u => u.id === inv.receiverId);
                 return (
                   <div key={inv.id} className="flex items-center justify-between p-2 border border-gray-100 rounded-lg">
@@ -3396,7 +3278,7 @@ const ProjectDetail = () => {
       {viewingPdf && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-2xl p-4 w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold flex items-center"><FileText className="w-5 h-5 mr-2 text-blue-600"/> Document Viewer</h3><button onClick={() => setViewingPdf(null)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-colors"><X className="w-5 h-5"/></button></div>
+            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold flex items-center"><FileText className="w-5 h-5 mr-2 text-blue-600" /> Document Viewer</h3><button onClick={() => setViewingPdf(null)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-colors"><X className="w-5 h-5" /></button></div>
             <object data={viewingPdf} type="application/pdf" className="w-full flex-1 border border-gray-200 rounded-lg bg-gray-50"><div className="flex items-center justify-center h-full text-gray-500 flex-col"><AlertTriangle className="w-8 h-8 mb-2" /><p>Your browser does not support viewing PDFs directly.</p><a href={viewingPdf} download className="text-blue-500 hover:underline mt-2">Click here to download it instead.</a></div></object>
           </div>
         </div>
@@ -3406,6 +3288,141 @@ const ProjectDetail = () => {
 };
 
 export default ProjectDetail;
+
+import { useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
+import { Plus, Folder, Code, Eye, EyeOff, Users } from 'lucide-react'; 
+import CreateProjectForm from '../../components/projects/CreateProjectForm';
+import { Link } from 'react-router-dom';
+
+const ProjectList = () => {
+  const { currentUser } = useAuth();
+  const { projects, courses, updateProject, showToast, invitations } = useData(); 
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // Filter projects to only show ones where the user is Creator or Collaborator
+  const userProjects = projects.filter(p => {
+    const isCreator = currentUser?.role === 'Student' && p.creatorId === currentUser?.id;
+    const isCollaborator = invitations?.some(inv => 
+      inv.projectId === p.id && 
+      inv.receiverId === currentUser?.id && 
+      inv.status === 'accepted'
+    );
+    return isCreator || isCollaborator;
+  });
+
+  const getCourseName = (id) => courses.find(c => c.id === id)?.name || 'Unknown Course';
+
+  // Toggle Visibility (Req 22)
+  const handleToggleVisibility = (project) => {
+    if (project.creatorId !== currentUser?.id) {
+       if (showToast) showToast("Only the project creator can change visibility.", "error");
+       return;
+    }
+    const newVisibility = project.visibility === 'public' ? 'private' : 'public';
+    updateProject(project.id, { visibility: newVisibility });
+    if (showToast) {
+      showToast(`Project is now ${newVisibility} on your portfolio!`, newVisibility === 'public' ? 'success' : 'info');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-primary">My Projects</h2>
+        {currentUser?.role === 'Student' && (
+          <button 
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Project
+          </button>
+        )}
+      </div>
+
+      {showCreateForm && <CreateProjectForm onClose={() => setShowCreateForm(false)} />}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {userProjects.map(project => {
+          const isCreator = project.creatorId === currentUser?.id;
+
+          return (
+            <div key={project.id} className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow flex flex-col h-full relative group">
+              <div className="flex justify-between items-start mb-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isCreator ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                  {isCreator ? <Folder className="w-6 h-6" /> : <Users className="w-6 h-6" />}
+                </div>
+                
+                {isCreator ? (
+                  <button 
+                    onClick={() => handleToggleVisibility(project)}
+                    title="Click to toggle portfolio visibility"
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase transition-all hover:scale-105 shadow-sm border ${
+                      project.visibility === 'public' 
+                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
+                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    {project.visibility === 'public' ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                    {project.visibility}
+                  </button>
+                ) : (
+                  <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase shadow-sm border ${
+                    project.visibility === 'public' 
+                      ? 'bg-green-50 text-green-700 border-green-200' 
+                      : 'bg-gray-100 text-gray-600 border-gray-200'
+                  }`}>
+                    {project.visibility === 'public' ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                    {project.visibility}
+                  </span>
+                )}
+              </div>
+              
+              <Link to={`/projects/${project.id}`}>
+                <h3 className="font-bold text-lg text-primary mb-1 hover:text-blue-600 transition-colors cursor-pointer">
+                  {project.title}
+                </h3>
+              </Link>
+              <p className="text-sm text-gray-500 mb-4">{getCourseName(project.courseId)}</p>
+              
+              <div className="flex flex-wrap gap-2 mb-6 flex-1">
+                {project.languages?.map(lang => (
+                  <span key={lang} className="px-2 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-md text-xs font-medium">
+                    {lang}
+                  </span>
+                ))}
+              </div>
+
+              <div className="pt-4 border-t border-gray-100 flex items-center justify-between mt-auto">
+                <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">{project.creationDate}</span>
+                <div className="flex space-x-2">
+                  {project.githubLink && (
+                    <a href={project.githubLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm">
+                      <Code className="w-3 h-3" /> GitHub
+                    </a>
+                  )}
+                  <Link to={`/projects/${project.id}`} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-sm">
+                    <Eye className="w-3 h-3" /> Details
+                  </Link>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        
+        {userProjects.length === 0 && !showCreateForm && (
+          <div className="col-span-full py-12 text-center text-gray-500 bg-surface rounded-2xl border border-dashed border-gray-300">
+            No projects found.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ProjectList;
 
 .counter {
   font-size: 16px;
@@ -3836,6 +3853,7 @@ export default defineConfig([
       "integrity": "sha512-CGOfOJqWjg2qW/Mb6zNsDm+u5vFQ8DxXfbM09z69p5Z6+mE1ikP2jUXw+j42Pf1XTYED2Rni5f95npYeuwMDQA==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "dependencies": {
         "@babel/code-frame": "^7.29.0",
         "@babel/generator": "^7.29.0",
@@ -4052,6 +4070,7 @@ export default defineConfig([
       "dev": true,
       "license": "MIT",
       "optional": true,
+      "peer": true,
       "dependencies": {
         "@emnapi/wasi-threads": "1.2.1",
         "tslib": "^2.4.0"
@@ -4064,6 +4083,7 @@ export default defineConfig([
       "dev": true,
       "license": "MIT",
       "optional": true,
+      "peer": true,
       "dependencies": {
         "tslib": "^2.4.0"
       }
@@ -4692,6 +4712,7 @@ export default defineConfig([
       "integrity": "sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "dependencies": {
         "csstype": "^3.2.2"
       }
@@ -4738,6 +4759,7 @@ export default defineConfig([
       "integrity": "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "bin": {
         "acorn": "bin/acorn"
       },
@@ -4848,9 +4870,9 @@ export default defineConfig([
       }
     },
     "node_modules/baseline-browser-mapping": {
-      "version": "2.10.27",
-      "resolved": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.10.27.tgz",
-      "integrity": "sha512-zEs/ufmZoUd7WftKpKyXaT6RFxpQ5Qm9xytKRHvJfxFV9DFJkZph9RvJ1LcOUi0Z1ZVijMte65JbILeV+8QQEA==",
+      "version": "2.10.28",
+      "resolved": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.10.28.tgz",
+      "integrity": "sha512-Ic44hnOtFIgravCunj1ifSoQPSUrkNiJuH9Mf6jr2jjoA74icqV8wU0KuadXeOR8zuIJMOoTv0GuQjZ9ZYNMeA==",
       "dev": true,
       "license": "Apache-2.0",
       "bin": {
@@ -4919,6 +4941,7 @@ export default defineConfig([
         }
       ],
       "license": "MIT",
+      "peer": true,
       "dependencies": {
         "baseline-browser-mapping": "^2.10.12",
         "caniuse-lite": "^1.0.30001782",
@@ -5117,9 +5140,9 @@ export default defineConfig([
       "license": "MIT"
     },
     "node_modules/electron-to-chromium": {
-      "version": "1.5.352",
-      "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.352.tgz",
-      "integrity": "sha512-9wHk8x6dyuimoe18EdiDPWKExNdxYqo4fn4FwOVVper6RxT3cmpBwBkWWfSOCYJjQdIco/nPhJhNLmn4Ufg1Yg==",
+      "version": "1.5.353",
+      "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.353.tgz",
+      "integrity": "sha512-kOrWphBi8TOZyiJZqsgqIle0lw+tzmnQK83pV9dZUd01Nm2POECSyFQMAuarzZdYqQW7FH9RaYOuaRo3h+bQ3w==",
       "dev": true,
       "license": "ISC"
     },
@@ -5162,6 +5185,7 @@ export default defineConfig([
       "integrity": "sha512-XbEXaRva5cF0ZQB8w6MluHA0kZZfV2DuCMJ3ozyEOHLwDpZX2Lmm/7Pp0xdJmI0GL1W05VH5VwIFHEm1Vcw2gw==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "dependencies": {
         "@eslint-community/eslint-utils": "^4.8.0",
         "@eslint-community/regexpp": "^4.12.2",
@@ -5663,6 +5687,7 @@ export default defineConfig([
       "integrity": "sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "bin": {
         "jiti": "bin/jiti.js"
       }
@@ -6320,6 +6345,7 @@ export default defineConfig([
         }
       ],
       "license": "MIT",
+      "peer": true,
       "dependencies": {
         "nanoid": "^3.3.11",
         "picocolors": "^1.1.1",
@@ -6509,6 +6535,7 @@ export default defineConfig([
       "resolved": "https://registry.npmjs.org/react/-/react-19.2.6.tgz",
       "integrity": "sha512-sfWGGfavi0xr8Pg0sVsyHMAOziVYKgPLNrS7ig+ivMNb3wbCBw3KxtflsGBAwD3gYQlE/AEZsTLgToRrSCjb0Q==",
       "license": "MIT",
+      "peer": true,
       "engines": {
         "node": ">=0.10.0"
       }
@@ -6518,6 +6545,7 @@ export default defineConfig([
       "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.6.tgz",
       "integrity": "sha512-0prMI+hvBbPjsWnxDLxlCGyM8PN6UuWjEUCYmZhO67xIV9Xasa/r/vDnq+Xyq4Lo27g8QSbO5YzARu0D1Sps3g==",
       "license": "MIT",
+      "peer": true,
       "dependencies": {
         "scheduler": "^0.27.0"
       },
@@ -6877,6 +6905,7 @@ export default defineConfig([
       "integrity": "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "engines": {
         "node": ">=12"
       },
@@ -6979,6 +7008,7 @@ export default defineConfig([
       "integrity": "sha512-Jz1mxtUBR5xTT65VOdJZUUeoyLtqljmFkiUXhPTLZka3RDc9vpi/xXkyrnsdRcm2lIi3l3GPMnAidTsEGIj3Ow==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "dependencies": {
         "lightningcss": "^1.32.0",
         "picomatch": "^4.0.4",
@@ -7116,6 +7146,7 @@ export default defineConfig([
       "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
       "dev": true,
       "license": "MIT",
+      "peer": true,
       "funding": {
         "url": "https://github.com/sponsors/colinhacks"
       }
@@ -7202,13 +7233,5 @@ export default {
   },
   plugins: [],
 }
-
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
-})
 
 

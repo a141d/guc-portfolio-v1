@@ -34,15 +34,18 @@ export const DataProvider = ({ children }) => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // --- USERS ---
   const addUser = (newUser) => setUsers([...users, { ...newUser, id: users.length + 1 }]);
   const updateUserStatus = (userId, newStatus) => setUsers(users.map(u => u.id === userId ? { ...u, status: newStatus } : u));
   const updateUser = (userId, data) => setUsers(users.map(u => u.id === userId ? { ...u, ...data } : u));
   const toggleUserActiveStatus = (userId) => setUsers(users.map(u => u.id === userId ? { ...u, status: (u.status || 'active') === 'active' ? 'deactivated' : 'active' } : u));
   const resetPassword = (email, newPassword) => setUsers(users.map(u => u.email === email ? { ...u, password: newPassword } : u));
 
+  // --- COURSES ---
   const addCourse = (code, name) => setCourses([...courses, { id: `c${courses.length + 1}`, code, name }]);
   const deleteCourse = (courseId) => setCourses(courses.filter(c => c.id !== courseId));
 
+  // --- PROJECTS ---
   const addProject = (p) => {
     const localDate = new Date().toLocaleDateString('en-CA'); 
     setProjects([...projects, { ...p, id: `p${projects.length + 1}`, creationDate: localDate, status: 'active', rating: 0, ratings: [] }]);
@@ -50,7 +53,6 @@ export const DataProvider = ({ children }) => {
   const updateProject = (id, updatedData) => setProjects(projects.map(p => p.id === id ? { ...p, ...updatedData } : p));
   const deleteProject = (id) => setProjects(projects.filter(p => p.id !== id));
   
-  // REQ 39: Average Rating Logic
   const rateProject = (projectId, instructorId, score) => {
     setProjects(projects.map(p => {
       if (p.id === projectId) {
@@ -61,47 +63,88 @@ export const DataProvider = ({ children }) => {
         ];
         const totalScore = updatedRatings.reduce((sum, r) => sum + r.score, 0);
         const averageRating = totalScore / updatedRatings.length;
-        
         return { ...p, ratings: updatedRatings, rating: Math.round(averageRating) };
       }
       return p;
     }));
   };
 
-  const flagProject = (id, reason) => setProjects(projects.map(p => p.id === id ? { ...p, isFlagged: true, flagReason: reason } : p));
+  const flagProject = (id, reason) => {
+    setProjects(projects.map(p => {
+      if (p.id === id) {
+        const admin = users.find(u => u.role === 'Administrator') || { id: 3 };
+        setInvitations(prev => [...prev, {
+          id: `notif${Date.now()}`,
+          type: 'project_flagged',
+          projectId: id,
+          senderId: admin.id,
+          receiverId: p.creatorId,
+          status: 'info',
+          read: false
+        }]);
+        return { ...p, isFlagged: true, flagReason: reason, status: 'deactivated' };
+      }
+      return p;
+    }));
+    if (showToast) showToast("Project flagged and deactivated.", "error");
+  };
+
   const submitAppeal = (id, msg) => setProjects(projects.map(p => p.id === id ? { ...p, appealMessage: msg } : p));
   const resolveFlag = (id, deactivate) => setProjects(projects.map(p => p.id === id ? { ...p, isFlagged: false, status: deactivate ? 'deactivated' : 'active', flagReason: null, appealMessage: null } : p));
 
+  // --- REQ 64: THE MISSING FUNCTION! ---
+  const toggleProjectStatus = (id) => {
+    setProjects(projects.map(p => {
+      if (p.id === id) {
+        const newStatus = p.status === 'active' ? 'deactivated' : 'active';
+        if (showToast) showToast(`Project ${newStatus}!`, newStatus === 'active' ? 'success' : 'error');
+        return { ...p, status: newStatus };
+      }
+      return p;
+    }));
+  };
+
+  // --- DRAFTS ---
   const uploadThesisDraft = (projectId, name, fileData) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setThesisDrafts([...thesisDrafts, { id: `d${Date.now()}`, projectId, name, fileData, date: localDate, isFinal: false }]);
   };
   const setFinalDraft = (projectId, draftId) => setThesisDrafts(thesisDrafts.map(d => d.projectId === projectId ? { ...d, isFinal: d.id === draftId } : d));
 
+  // --- TASKS ---
   const addTask = (t) => setTasks([...tasks, { ...t, id: `t${Date.now()}` }]);
   const updateTask = (id, updatedData) => setTasks(prevTasks => prevTasks.map(t => t.id === id ? { ...t, ...updatedData } : t));
   const deleteTask = (id) => setTasks(tasks.filter(t => t.id !== id));
   const toggleTaskStatus = (id) => setTasks(tasks.map(t => t.id === id ? { ...t, status: t.status === 'pending' ? 'completed' : 'pending' } : t));
+  
+  // --- COMMENTS ---
   const addTaskComment = (c) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setTaskComments([...taskComments, { ...c, id: `tc${taskComments.length + 1}`, date: localDate }]);
-
-    // Find the task to see who it is assigned to
     const task = tasks.find(t => t.id === c.taskId);
     if (task) {
       setInvitations(prev => [...prev, {
-        id: `notif${Date.now()}`,
-        type: 'feedback_task',
-        projectId: task.projectId,
-        taskId: task.id,
-        senderId: c.instructorId,
-        receiverId: task.assigneeId, // Notify the student assigned to the task
-        status: 'info',
-        read: false
+        id: `notif${Date.now()}`, type: 'feedback_task', projectId: task.projectId, taskId: task.id,
+        senderId: c.instructorId, receiverId: task.assigneeId, status: 'info', read: false
       }]);
     }
   };
 
+  const addProjectComment = (c) => {
+    const localDate = new Date().toLocaleDateString('en-CA');
+    setProjectComments([...projectComments, { ...c, id: `pc${projectComments.length + 1}`, date: localDate }]);
+    const project = projects.find(p => p.id === c.projectId);
+    if (project) {
+      setInvitations(prev => [...prev, {
+        id: `notif${Date.now()}`, type: 'feedback_project', projectId: project.id,
+        senderId: c.instructorId, receiverId: project.creatorId, status: 'info', read: false
+      }]);
+    }
+  };
+  const updateProjectComment = (id, newText) => setProjectComments(projectComments.map(c => c.id === id ? { ...c, text: newText } : c));
+  const deleteProjectComment = (id) => setProjectComments(projectComments.filter(c => c.id !== id));
+
+  // --- INTERNSHIPS ---
   const addInternship = (i) => {
     const localDate = new Date().toLocaleDateString('en-CA');
     setInternships([...internships, { ...i, id: `i${internships.length + 1}`, postedDate: localDate, status: 'hiring', isArchived: false }]);
@@ -111,6 +154,7 @@ export const DataProvider = ({ children }) => {
   const toggleInternshipStatus = (id) => setInternships(internships.map(i => i.id === id ? { ...i, status: i.status === 'hiring' ? 'filled' : 'hiring' } : i));
   const archiveInternship = (id) => setInternships(internships.map(i => i.id === id ? { ...i, isArchived: true } : i));
 
+  // --- INVITES & NOTIFICATIONS ---
   const sendInvitation = (pId, sId, rId) => {
     const alreadyInvited = invitations.some(i => i.projectId === pId && i.receiverId === rId);
     if (alreadyInvited) {
@@ -125,52 +169,11 @@ export const DataProvider = ({ children }) => {
   const deleteInvitation = (id) => setInvitations(invitations.filter(i => i.id !== id));
   const toggleNotificationRead = (id) => setInvitations(invitations.map(i => i.id === id ? { ...i, read: !i.read } : i));
 
-  const addProjectComment = (c) => {
-    const localDate = new Date().toLocaleDateString('en-CA');
-    setProjectComments([...projectComments, { ...c, id: `pc${projectComments.length + 1}`, date: localDate }]);
-
-    // Find the project to see who created it
-    const project = projects.find(p => p.id === c.projectId);
-    if (project) {
-      setInvitations(prev => [...prev, {
-        id: `notif${Date.now()}`,
-        type: 'feedback_project',
-        projectId: project.id,
-        senderId: c.instructorId,
-        receiverId: project.creatorId, // Notify the creator of the project
-        status: 'info',
-        read: false
-      }]);
-    }
-  };
-  const updateProjectComment = (id, newText) => setProjectComments(projectComments.map(c => c.id === id ? { ...c, text: newText } : c));
-  const deleteProjectComment = (id) => setProjectComments(projectComments.filter(c => c.id !== id));
-
-  const toggleFavorite = (userId, itemId, type) => {
-    const existing = favorites.find(f => f.userId === userId && f.itemId === itemId);
-    if (existing) setFavorites(favorites.filter(f => f.id !== existing.id));
-    else setFavorites([...favorites, { id: `fav${Date.now()}`, userId, itemId, type }]);
-  };
-  const sendMessage = (senderId, receiverId, text) => {
-    const now = new Date();
-    const timestamp = `${now.toLocaleDateString('en-CA')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-    setMessages([...messages, { id: `m${Date.now()}`, senderId, receiverId, text, timestamp, read: false }]);
-  };
-  const markMessagesRead = (receiverId, senderId) => setMessages(messages.map(m => (m.receiverId === receiverId && m.senderId === senderId) ? { ...m, read: true } : m));
-
   const sendCourseRequest = (senderId, courseCode, actionType) => {
     const admin = users.find(u => u.role === 'Administrator');
     if (!admin) return;
-
     setInvitations(prev => [...prev, { 
-      id: `req${Date.now()}`, 
-      type: 'course_request', 
-      actionType, 
-      courseCode, 
-      senderId, 
-      receiverId: admin.id, 
-      status: 'pending', 
-      read: false 
+      id: `req${Date.now()}`, type: 'course_request', actionType, courseCode, senderId, receiverId: admin.id, status: 'pending', read: false 
     }]);
     if (showToast) showToast(`${actionType === 'link' ? 'Link' : 'Unlink'} request sent to Administrator!`);
   };
@@ -178,7 +181,6 @@ export const DataProvider = ({ children }) => {
   const resolveCourseRequest = (reqId, newStatus) => {
     const req = invitations.find(i => i.id === reqId);
     if (!req) return;
-
     setInvitations(invitations.map(i => i.id === reqId ? { ...i, status: newStatus, read: true } : i));
 
     if (newStatus === 'accepted') {
@@ -195,11 +197,29 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  // --- FAVORITES & MESSAGES ---
+  const toggleFavorite = (userId, itemId, type) => {
+    const existing = favorites.find(f => f.userId === userId && f.itemId === itemId);
+    if (existing) setFavorites(favorites.filter(f => f.id !== existing.id));
+    else setFavorites([...favorites, { id: `fav${Date.now()}`, userId, itemId, type }]);
+  };
+
+  const sendMessage = (senderId, receiverId, text) => {
+    const now = new Date();
+    const timestamp = `${now.toLocaleDateString('en-CA')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    setMessages([...messages, { id: `m${Date.now()}`, senderId, receiverId, text, timestamp, read: false }]);
+  };
+  
+  const markMessagesRead = (receiverId, senderId) => setMessages(messages.map(m => (m.receiverId === receiverId && m.senderId === senderId) ? { ...m, read: true } : m));
+
   return (
     <DataContext.Provider value={{ 
       users, addUser, updateUserStatus, updateUser, toggleUserActiveStatus, resetPassword,
       courses, addCourse, deleteCourse, 
-      projects, addProject, updateProject, deleteProject, rateProject, flagProject, submitAppeal, resolveFlag,
+      
+      // PROJECT EXPORTS: Ensure toggleProjectStatus is right here!
+      projects, addProject, updateProject, deleteProject, rateProject, flagProject, submitAppeal, resolveFlag, toggleProjectStatus,
+      
       thesisDrafts, uploadThesisDraft, setFinalDraft,
       internships, addInternship, toggleInternshipStatus, archiveInternship,
       tasks, addTask, toggleTaskStatus, updateTask, deleteTask,

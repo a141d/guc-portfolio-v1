@@ -1,10 +1,12 @@
 // src/pages/Admin/AdminDashboard.jsx
 import { useState } from 'react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext'; // <-- ADDED THIS
 import { Users, Folder, BookOpen, Check, X, AlertTriangle, Plus, Trash2, ShieldAlert, Download, Eye, FileText, MapPin, Phone, Info } from 'lucide-react'; 
 
 const AdminDashboard = () => {
-  const { users, projects, courses, updateUserStatus, resolveFlag, toggleUserActiveStatus, addCourse, deleteCourse, addUser, showToast } = useData(); 
+  const { users, projects, courses, updateUserStatus, resolveFlag, toggleUserActiveStatus, addCourse, deleteCourse, addUser, showToast,toggleProjectStatus } = useData(); 
+  const { currentUser } = useAuth(); // <-- ADDED THIS to know who is logged in
   
   const flaggedProjects = projects.filter(p => p.isFlagged);
   const pendingEmployers = users.filter(u => u.role === 'Employer' && u.status === 'pending_admin_approval');
@@ -17,7 +19,7 @@ const AdminDashboard = () => {
   
   const [viewingPdf, setViewingPdf] = useState(null);
 
-  // Advanced PDF Handler: Converts Base64 to a secure local Blob URL to bypass browser iframe blocking
+  // Advanced PDF Handler
   const handleViewPdf = (pdfData) => {
     if (!pdfData) return;
     
@@ -86,7 +88,7 @@ const AdminDashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Pending Employers (Req 14, 15, 16, 17) */}
+        {/* Pending Employers */}
         <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
           <h3 className="text-lg font-bold text-primary mb-4">Pending Employer Approvals</h3>
           <div className="space-y-4">
@@ -100,7 +102,6 @@ const AdminDashboard = () => {
                        <h4 className="font-bold text-primary text-lg">{emp.companyName}</h4>
                        <p className="text-sm text-blue-600 font-medium mb-3"><a href={`mailto:${emp.email}`} className="hover:underline">{emp.email}</a></p>
                        
-                       {/* Display Expanded Employer Details (Req 15) */}
                        <div className="space-y-2 bg-white p-3 rounded-lg border border-gray-100 mb-3">
                          {emp.bio && <p className="text-sm text-gray-600 flex items-start"><Info className="w-4 h-4 mr-2 mt-0.5 text-gray-400 shrink-0"/> {emp.bio}</p>}
                          {emp.contactInfo && <p className="text-sm text-gray-600 flex items-center"><Phone className="w-4 h-4 mr-2 text-gray-400 shrink-0"/> {emp.contactInfo}</p>}
@@ -114,7 +115,6 @@ const AdminDashboard = () => {
                      </div>
                   </div>
                   
-                  {/* Document View & Download (Req 16 & 17) */}
                   <div className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between shadow-sm">
                      <div className="flex items-center text-sm font-medium text-gray-700 truncate mr-4">
                        <FileText className="w-4 h-4 mr-2 text-blue-500 shrink-0" /> 
@@ -142,41 +142,98 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* All Users List */}
+        {/* All Users List (Req 52 & 54 - Grouped by Role & Strict Activation Rules) */}
         <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 row-span-2">
-          <h3 className="text-lg font-bold text-primary mb-4">System Users</h3>
-          <div className="overflow-y-auto max-h-[600px] space-y-2 pr-2">
-            {systemUsers.map(user => {
-              const isRejected = user.status === 'rejected';
-              const isActive = user.status !== 'deactivated' && !isRejected;
-              
+          <h3 className="text-lg font-bold text-primary mb-6">System Users</h3>
+          <div className="overflow-y-auto max-h-[700px] space-y-6 pr-2">
+            {['Administrator', 'Course Instructor', 'Student', 'Employer'].map(role => {
+              const roleUsers = systemUsers.filter(u => u.role === role);
+              if (roleUsers.length === 0) return null;
+
               return (
-                <div key={user.id} className={`flex items-center justify-between p-3 rounded-xl transition-colors border ${isActive ? 'hover:bg-gray-50 border-transparent' : 'bg-red-50 border-red-100 opacity-80'}`}>
-                  <div className="flex items-center gap-3">
-                    <img src={user.profilePic} alt="" className="w-8 h-8 rounded-full object-cover" />
-                    <div>
-                      <p className={`text-sm font-bold ${isActive ? 'text-primary' : 'text-red-700 line-through'}`}>
-                        {user.firstName || user.companyName} {user.lastName}
-                      </p>
-                      <p className="text-xs text-gray-500">{user.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium px-2 py-1 bg-gray-100 rounded-md text-gray-600">{user.role}</span>
-                    {isRejected ? (
-                      <span className="text-[10px] font-bold px-2 py-1 bg-red-100 text-red-700 rounded-md uppercase">Rejected</span>
-                    ) : user.role !== 'Administrator' ? (
-                       <button onClick={() => toggleUserActiveStatus(user.id)} className={`text-xs font-bold px-2 py-1 rounded-md transition-colors ${isActive ? 'text-red-600 hover:bg-red-100' : 'text-green-600 hover:bg-green-100'}`}>
-                         {isActive ? 'Deactivate' : 'Reactivate'}
-                       </button>
-                    ) : null}
-                  </div>
+                <div key={role} className="space-y-3">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-2 flex items-center justify-between">
+                    {role}s
+                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{roleUsers.length}</span>
+                  </h4>
+                  
+                  {roleUsers.map(user => {
+                    const isRejected = user.status === 'rejected';
+                    const isActive = user.status !== 'deactivated' && !isRejected;
+                    
+                    // --- REQ 54 STRICT LOGIC ---
+                    // 1. Is this the original Super Admin? (ID 3 in dummyData)
+                    const isSuperAdmin = user.id === 3 || user.email === 'admin@guc.edu.eg';
+                    // 2. Is this row the current logged-in user?
+                    const isSelf = user.id === currentUser?.id;
+                    // 3. You can toggle anyone EXCEPT the Super Admin, and you shouldn't toggle yourself
+                    const canToggleStatus = !isSuperAdmin && !isSelf;
+                    
+                    return (
+                      <div key={user.id} className={`flex items-center justify-between p-3 rounded-xl transition-colors border ${isActive ? 'hover:bg-gray-50 border-transparent' : 'bg-red-50 border-red-100 opacity-80'}`}>
+                        <div className="flex items-center gap-3">
+                          <img src={user.profilePic} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+                          <div>
+                            <p className={`text-sm font-bold ${isActive ? 'text-primary' : 'text-red-700 line-through'}`}>
+                              {user.firstName || user.companyName} {user.lastName || ''}
+                            </p>
+                            <p className="text-xs text-gray-500">{user.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isRejected ? (
+                            <span className="text-[10px] font-bold px-2 py-1 bg-red-100 text-red-700 rounded-md uppercase tracking-wider">Rejected</span>
+                          ) : canToggleStatus ? (
+                             <button onClick={() => toggleUserActiveStatus(user.id)} className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${isActive ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-green-600 bg-green-50 hover:bg-green-100'}`}>
+                               {isActive ? 'Deactivate' : 'Reactivate'}
+                             </button>
+                          ) : isSuperAdmin ? (
+                             <span className="text-[10px] font-bold px-2 py-1 bg-purple-100 text-purple-700 rounded-md uppercase tracking-wider">Super Admin</span>
+                          ) : isSelf ? (
+                             <span className="text-[10px] font-bold px-2 py-1 bg-gray-100 text-gray-500 rounded-md uppercase tracking-wider">You</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-              )
+              );
             })}
           </div>
         </div>
-
+        {/* REQ 64: Project Management (Activate/Deactivate Any Project) */}
+        <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 row-span-2">
+          <h3 className="text-lg font-bold text-primary mb-6 flex items-center">
+            <Folder className="w-5 h-5 mr-2" /> Project Management
+          </h3>
+          <div className="overflow-y-auto max-h-[700px] space-y-3 pr-2">
+            {projects.length === 0 ? <p className="text-sm text-gray-500">No projects in the system.</p> : (
+              projects.map(proj => {
+                const isActive = proj.status === 'active';
+                const creator = users.find(u => u.id === proj.creatorId);
+                
+                return (
+                  <div key={proj.id} className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors ${isActive ? 'bg-white border-gray-200' : 'bg-red-50 border-red-200'}`}>
+                    <div>
+                      <h4 className={`font-bold text-sm ${isActive ? 'text-primary' : 'text-red-700'}`}>{proj.title}</h4>
+                      <p className="text-xs text-gray-500 mt-1">Creator: {creator?.firstName} {creator?.lastName} | Course: {courses.find(c => c.id === proj.courseId)?.code}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {proj.isFlagged && <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-1 rounded font-bold uppercase tracking-wider"><AlertTriangle className="w-3 h-3 inline mr-1" /> Flagged</span>}
+                      <button 
+                        onClick={() => toggleProjectStatus(proj.id)} 
+                        className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${isActive ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-green-600 bg-green-50 hover:bg-green-100'}`}
+                      >
+                        {isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+        
         {/* Course Management */}
         <div className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100">
            <h3 className="text-lg font-bold text-primary mb-4 flex items-center"><BookOpen className="w-5 h-5 mr-2" /> Manage Courses</h3>
@@ -252,9 +309,6 @@ const AdminDashboard = () => {
               </button>
             </div>
             
-            {/* We use an <object> tag instead of <iframe> here because it forces the browser 
-                to use its native PDF viewer plugin, which handles Local Blob URLs much more reliably! 
-            */}
             <object 
               data={viewingPdf} 
               type="application/pdf" 

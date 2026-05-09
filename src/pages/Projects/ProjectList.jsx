@@ -1,7 +1,8 @@
+// src/pages/Projects/ProjectList.jsx
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { Plus, Folder, Code, Eye, EyeOff, Users } from 'lucide-react'; 
+import { Plus, Folder, Code, Eye, EyeOff, Users, AlertTriangle } from 'lucide-react'; 
 import CreateProjectForm from '../../components/projects/CreateProjectForm';
 import { Link } from 'react-router-dom';
 
@@ -58,9 +59,17 @@ const ProjectList = () => {
           const isCreator = project.creatorId === currentUser?.id;
 
           return (
-            <div key={project.id} className="bg-surface p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow flex flex-col h-full relative group">
+            <div key={project.id} className={`bg-surface p-6 rounded-2xl shadow-sm border transition-shadow flex flex-col h-full relative group ${project.status === 'deactivated' ? 'border-red-200 bg-red-50 hover:shadow-md' : 'border-gray-100 hover:shadow-md'}`}>
+              
+              {/* WARNING INDICATOR: If project is flagged/deactivated */}
+              {project.status === 'deactivated' && (
+                <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-lg flex items-center">
+                  <AlertTriangle className="w-3 h-3 mr-1" /> Deactivated (Flagged)
+                </div>
+              )}
+
               <div className="flex justify-between items-start mb-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isCreator ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isCreator ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'} ${project.status === 'deactivated' ? 'opacity-50' : ''}`}>
                   {isCreator ? <Folder className="w-6 h-6" /> : <Users className="w-6 h-6" />}
                 </div>
                 
@@ -90,7 +99,7 @@ const ProjectList = () => {
               </div>
               
               <Link to={`/projects/${project.id}`}>
-                <h3 className="font-bold text-lg text-primary mb-1 hover:text-blue-600 transition-colors cursor-pointer">
+                <h3 className={`font-bold text-lg mb-1 hover:text-blue-600 transition-colors cursor-pointer ${project.status === 'deactivated' ? 'text-red-800' : 'text-primary'}`}>
                   {project.title}
                 </h3>
               </Link>
@@ -98,14 +107,14 @@ const ProjectList = () => {
               
               <div className="flex flex-wrap gap-2 mb-6 flex-1">
                 {project.languages?.map(lang => (
-                  <span key={lang} className="px-2 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-md text-xs font-medium">
+                  <span key={lang} className={`px-2 py-1 border rounded-md text-xs font-medium ${project.status === 'deactivated' ? 'bg-red-100 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
                     {lang}
                   </span>
                 ))}
               </div>
 
-              <div className="pt-4 border-t border-gray-100 flex items-center justify-between mt-auto">
-                <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">{project.creationDate}</span>
+              <div className={`pt-4 border-t flex items-center justify-between mt-auto ${project.status === 'deactivated' ? 'border-red-200' : 'border-gray-100'}`}>
+                <span className={`text-xs font-medium px-2 py-1 rounded border ${project.status === 'deactivated' ? 'bg-red-100 border-red-200 text-red-500' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>{project.creationDate}</span>
                 <div className="flex space-x-2">
                   {project.githubLink && (
                     <a href={project.githubLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm">
